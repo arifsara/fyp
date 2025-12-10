@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Node modules (for frontend)
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Frontend build
+glowsense-web/.next/
+glowsense-web/node_modules/
+
+# Uploads
+uploads/
+static/uploads/
+
+# Personal Access Tokens - NEVER COMMIT THESE!
+*.token
+*.key
+*_token.txt
+

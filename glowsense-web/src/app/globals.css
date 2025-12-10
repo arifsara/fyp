@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  /* Primary Pink Palette */
+  --primary: #FF4D8D;
+  --primary-light: #FF85A9;
+  --primary-dark: #D43369;
+  
+  /* Secondary/Neutral Palette */
+  --background: #FFF5F7;
+  --foreground: #1A1A1A;
+  
+  --card: #FFFFFF;
+  --card-foreground: #1A1A1A;
+  
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  
+  --accent: #FFE4ED;
+  --accent-foreground: #FF4D8D;
+  
+  --border: #E5E7EB;
+  --input: #F9FAFB;
+  --ring: #FF4D8D;
+  
+  /* Status Colors */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  
+  /* Border Radius */
+  --radius: 0.75rem;
+}
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  --radius: var(--radius);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--primary-light);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
