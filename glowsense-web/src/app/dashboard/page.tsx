@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Calendar, DollarSign, Image as ImageIcon, Briefcase, Clock, User, CheckCircle, XCircle, AlertCircle, Edit, Save, X, Camera } from "lucide-react";
 import Link from "next/link";
 import ProviderLevelBadge from "@/components/rating/ProviderLevelBadge";
+import ProviderStandbyNotification from "@/components/standby/ProviderStandbyNotification";
 
 interface Service {
   id: number;
@@ -203,6 +204,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {/* Standby Notification */}
+      <ProviderStandbyNotification />
+      
       {/* Welcome Section */}
       <div className="flex items-center gap-6">
         <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">

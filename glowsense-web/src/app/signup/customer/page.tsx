@@ -1,27 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User, Loader2, ArrowLeft } from "lucide-react";
+import SignupLocation from "@/components/signup/SignupLocation";
 
 export default function CustomerSignupPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "", location: "" });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.id]: e.target.value });
+    setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
   };
+
+  const handleLocationChange = useCallback((location: string) => {
+    setFormData((prev) => ({ ...prev, location }));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    // Validate password
+    if (!formData.password || !formData.password.trim()) {
+      setError("Password is required");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.password.trim().length < 6) {
+      setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
@@ -30,22 +48,33 @@ export default function CustomerSignupPage() {
     }
 
     try {
+      const signupData = {
+        email: formData.email,
+        password: formData.password,
+        full_name: formData.name,
+        phone: formData.phone,
+        location: formData.location || null
+      };
+
+      console.log("Signup attempt:", { ...signupData, password: "***" }); // Debug log
+
       const res = await fetch("http://localhost:8000/signup/customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          full_name: formData.name,
-          phone: formData.phone
-        }),
+        body: JSON.stringify(signupData),
       });
+      
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Signup failed");
+      console.log("Signup response:", res.status, data); // Debug log
+      
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || "Signup failed");
+      }
 
       router.push("/login/customer");
     } catch (err: any) {
-      setError(err.message);
+      console.error("Signup error:", err); // Debug log
+      setError(err.message || "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -78,6 +107,11 @@ export default function CustomerSignupPage() {
               <Label htmlFor="phone">Phone Number</Label>
               <Input id="phone" type="tel" required onChange={handleChange} />
             </div>
+            <SignupLocation
+              onLocationChange={handleLocationChange}
+              value={formData.location}
+              required
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>

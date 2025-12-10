@@ -12,6 +12,7 @@ class Customer(Base):
     hashed_password = Column(String, nullable=True)  # Nullable for Google users
     full_name = Column(String)
     phone = Column(String)
+    location = Column(String, nullable=True)  # Customer location/city
     profile_picture = Column(String, nullable=True)  # URL from Google
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Briefcase, Loader2, ArrowLeft, Upload, X } from "lucide-react";
+import SignupLocation from "@/components/signup/SignupLocation";
 
 export default function ProviderSignupPage() {
   const router = useRouter();
@@ -20,8 +21,12 @@ export default function ProviderSignupPage() {
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.id]: e.target.value });
+    setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
   };
+
+  const handleLocationChange = useCallback((location: string) => {
+    setFormData((prev) => ({ ...prev, city: location }));
+  }, []);
 
   const handleFileUpload = async (file: File, type: "certificate" | "license") => {
     try {
@@ -49,7 +54,20 @@ export default function ProviderSignupPage() {
     setError("");
     setLoading(true);
 
-    if (formData.password && formData.password !== formData.confirmPassword) {
+    // Validate password
+    if (!formData.password || !formData.password.trim()) {
+      setError("Password is required");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.password.trim().length < 6) {
+      setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       setLoading(false);
       return;
@@ -80,30 +98,39 @@ export default function ProviderSignupPage() {
       }
 
       // Sign up provider
+      const signupData = {
+        email: formData.email,
+        password: formData.password,
+        full_name: formData.name,
+        phone: formData.phone,
+        business_name: formData.businessName,
+        city: formData.city,
+        bio: formData.bio || null,
+        cnic_id: formData.cnicId || null,
+        certificates: certificateUrl || formData.certificates || null,
+        business_license: licenseUrl || formData.businessLicense || null
+      };
+
+      console.log("Provider signup attempt:", { ...signupData, password: "***" }); // Debug log
+
       const res = await fetch("http://localhost:8000/signup/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password || undefined,
-          full_name: formData.name,
-          phone: formData.phone,
-          business_name: formData.businessName,
-          city: formData.city,
-          bio: formData.bio,
-          cnic_id: formData.cnicId,
-          certificates: certificateUrl || formData.certificates,
-          business_license: licenseUrl || formData.businessLicense
-        }),
+        body: JSON.stringify(signupData),
       });
+      
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Signup failed");
+      console.log("Provider signup response:", res.status, data); // Debug log
+      
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || "Signup failed");
+      }
 
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("role", "provider");
-      router.push("/dashboard/portfolio");
+      // Redirect to login page after successful signup
+      router.push("/login/provider");
     } catch (err: any) {
-      setError(err.message);
+      console.error("Provider signup error:", err); // Debug log
+      setError(err.message || "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -145,9 +172,12 @@ export default function ProviderSignupPage() {
                 <Label htmlFor="phone">Phone</Label>
                 <Input id="phone" type="tel" required onChange={handleChange} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City / Location</Label>
-                <Input id="city" required onChange={handleChange} />
+              <div className="col-span-2">
+                <SignupLocation
+                  onLocationChange={handleLocationChange}
+                  value={formData.city}
+                  required
+                />
               </div>
             </div>
 
@@ -226,12 +256,11 @@ export default function ProviderSignupPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" onChange={handleChange} />
-                <p className="text-xs text-muted-foreground">Optional if using Google sign-in</p>
+                <Input id="password" type="password" required onChange={handleChange} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input id="confirmPassword" type="password" onChange={handleChange} />
+                <Input id="confirmPassword" type="password" required onChange={handleChange} />
               </div>
             </div>
 

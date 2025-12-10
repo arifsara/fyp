@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks
 print("🔄 Loading database...", flush=True)
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ from zoneinfo import ZoneInfo
 import shutil
 import uuid
 from dotenv import load_dotenv
+import httpx
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,12 +30,8 @@ import booking_utils
 import notifications
 import google_calendar
 
-# Optional imports (may be slow)
-try:
-    from google.oauth2 import id_token
-    from google.auth.transport import requests
-except ImportError:
-    print("⚠️ Google OAuth libraries not available", flush=True)
+# Google OAuth authentication removed - using password-based authentication only
+# Note: google_calendar is kept for calendar integration (separate from authentication)
 
 from jose import jwt, JWTError
 
@@ -55,8 +53,9 @@ except ImportError:
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     scheduler = AsyncIOScheduler()
-    scheduler.start()
-    print("✅ APScheduler initialized for booking reminders")
+    # Don't start scheduler here - it needs a running event loop
+    # Will be started in startup event if needed
+    print("✅ APScheduler available for booking reminders")
 except ImportError:
     scheduler = None
     print("⚠️ APScheduler not installed. Reminder functionality will be limited.")
@@ -87,6 +86,27 @@ os.makedirs(f"{UPLOAD_DIR}/profile", exist_ok=True)
 os.makedirs(f"{UPLOAD_DIR}/documents", exist_ok=True)
 
 app = FastAPI()
+
+# Startup event to initialize scheduler
+@app.on_event("startup")
+async def startup_event():
+    """Initialize scheduler when app starts"""
+    if scheduler:
+        try:
+            scheduler.start()
+            print("✅ APScheduler started for booking reminders")
+        except Exception as e:
+            print(f"⚠️ Failed to start scheduler: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown scheduler when app stops"""
+    if scheduler:
+        try:
+            scheduler.shutdown()
+            print("✅ APScheduler stopped")
+        except Exception as e:
+            print(f"⚠️ Error stopping scheduler: {e}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -125,10 +145,11 @@ class CustomerCreate(BaseModel):
     password: str
     full_name: str
     phone: str
+    location: Optional[str] = None  # Customer location/city
 
 class ProviderCreate(BaseModel):
     email: str
-    password: Optional[str] = None  # Optional for Google OAuth
+    password: str  # Required for signup
     full_name: str
     phone: str
     business_name: str
@@ -146,9 +167,6 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     role: str  # 'customer' or 'provider'
-
-class GoogleAuthRequest(BaseModel):
-    token: str  # Google ID token from frontend
 
 class ExtendedProviderCreate(ProviderCreate):
     profile_photo: Optional[str] = None
@@ -211,24 +229,43 @@ class PaymentConfirm(BaseModel):
 
 @app.post("/signup/customer", response_model=Token)
 async def signup_customer(user: CustomerCreate, db: Session = Depends(database.get_db)):
-    # Check if email exists in Customer table
-    if db.query(models.Customer).filter(models.Customer.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered as Customer")
+    try:
+        # Check if email exists in Customer table
+        if db.query(models.Customer).filter(models.Customer.email == user.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered as Customer")
 
-    hashed_pwd = auth.get_password_hash(user.password)
+        # Validate password
+        if not user.password:
+            raise HTTPException(status_code=400, detail="Password is required for signup.")
+        
+        password_clean = user.password.strip()
+        if not password_clean:
+            raise HTTPException(status_code=400, detail="Password cannot be empty or only whitespace.")
+        
+        if len(password_clean) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+
+        hashed_pwd = auth.get_password_hash(password_clean)
     
-    new_user = models.Customer(
-        email=user.email, 
-        full_name=user.full_name, 
-        phone=user.phone,
-        hashed_password=hashed_pwd
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    access_token = auth.create_access_token(data={"sub": new_user.email, "role": "customer"})
-    return {"access_token": access_token, "token_type": "bearer", "role": "customer"}
+        new_user = models.Customer(
+            email=user.email, 
+            full_name=user.full_name, 
+            phone=user.phone,
+            location=user.location,
+            hashed_password=hashed_pwd
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        access_token = auth.create_access_token(data={"sub": new_user.email, "role": "customer"})
+        return {"access_token": access_token, "token_type": "bearer", "role": "customer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in customer signup: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
 @app.post("/login/customer", response_model=Token)
 async def login_customer(user: LoginRequest, db: Session = Depends(database.get_db)):
@@ -240,9 +277,9 @@ async def login_customer(user: LoginRequest, db: Session = Depends(database.get_
         # Use same error message to prevent email enumeration
         raise HTTPException(status_code=400, detail="Invalid customer credentials")
     
-    # Check if it's a Google user (no password)
+    # Check if account has no password (invalid account)
     if db_user.hashed_password is None:
-        raise HTTPException(status_code=400, detail="Please use Google Sign-in for this account")
+        raise HTTPException(status_code=400, detail="Account setup incomplete. Please contact support.")
     
     # Verify password for regular users (Argon2 verification is optimized)
     if not auth.verify_password(user.password, db_user.hashed_password):
@@ -255,34 +292,50 @@ async def login_customer(user: LoginRequest, db: Session = Depends(database.get_
 
 @app.post("/signup/provider", response_model=Token)
 async def signup_provider(user: ProviderCreate, db: Session = Depends(database.get_db)):
-    # Check if email exists in Provider table
-    if db.query(models.ServiceProvider).filter(models.ServiceProvider.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered as Provider")
+    try:
+        # Check if email exists in Provider table
+        if db.query(models.ServiceProvider).filter(models.ServiceProvider.email == user.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered as Provider")
 
-    # Hash password only if provided (not Google signup)
-    hashed_pwd = None
-    if user.password:
-        hashed_pwd = auth.get_password_hash(user.password)
+        # Validate password
+        if not user.password:
+            raise HTTPException(status_code=400, detail="Password is required for signup.")
+        
+        password_clean = user.password.strip()
+        if not password_clean:
+            raise HTTPException(status_code=400, detail="Password cannot be empty or only whitespace.")
+        
+        if len(password_clean) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+        
+        # Hash password
+        hashed_pwd = auth.get_password_hash(password_clean)
     
-    new_provider = models.ServiceProvider(
-        email=user.email, 
-        full_name=user.full_name, 
-        phone=user.phone,
-        business_name=user.business_name,
-        city=user.city,
-        bio=user.bio,
-        cnic_id=user.cnic_id,
-        certificates=user.certificates,
-        business_license=user.business_license,
-        hashed_password=hashed_pwd,
-        level="beginner"  # New providers start at beginner level
-    )
-    db.add(new_provider)
-    db.commit()
-    db.refresh(new_provider)
-    
-    access_token = auth.create_access_token(data={"sub": new_provider.email, "role": "provider", "provider_id": new_provider.id})
-    return {"access_token": access_token, "token_type": "bearer", "role": "provider"}
+        new_provider = models.ServiceProvider(
+            email=user.email, 
+            full_name=user.full_name, 
+            phone=user.phone,
+            business_name=user.business_name,
+            city=user.city,
+            bio=user.bio,
+            cnic_id=user.cnic_id,
+            certificates=user.certificates,
+            business_license=user.business_license,
+            hashed_password=hashed_pwd,
+            level="beginner"  # New providers start at beginner level
+        )
+        db.add(new_provider)
+        db.commit()
+        db.refresh(new_provider)
+        
+        access_token = auth.create_access_token(data={"sub": new_provider.email, "role": "provider", "provider_id": new_provider.id})
+        return {"access_token": access_token, "token_type": "bearer", "role": "provider"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in provider signup: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
 @app.post("/login/provider", response_model=Token)
 async def login_provider(user: LoginRequest, db: Session = Depends(database.get_db)):
@@ -292,9 +345,9 @@ async def login_provider(user: LoginRequest, db: Session = Depends(database.get_
     if not db_user:
         raise HTTPException(status_code=400, detail="Invalid provider credentials")
     
-    # Check if it's a Google user (no password)
+    # Check if account has no password (invalid account)
     if db_user.hashed_password is None:
-        raise HTTPException(status_code=400, detail="Please use Google Sign-in for this account")
+        raise HTTPException(status_code=400, detail="Account setup incomplete. Please contact support.")
     
     # Verify password for regular users
     if not auth.verify_password(user.password, db_user.hashed_password):
@@ -302,90 +355,6 @@ async def login_provider(user: LoginRequest, db: Session = Depends(database.get_
     
     access_token = auth.create_access_token(data={"sub": db_user.email, "role": "provider", "provider_id": db_user.id})
     return {"access_token": access_token, "token_type": "bearer", "role": "provider"}
-
-# --- Google OAuth Routes ---
-
-@app.post("/auth/google/customer", response_model=Token)
-async def google_auth_customer(request: GoogleAuthRequest, db: Session = Depends(database.get_db)):
-    try:
-        # Verify Google token (In production, use your actual Google Client ID)
-        GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
-        idinfo = id_token.verify_oauth2_token(request.token, requests.Request(), GOOGLE_CLIENT_ID)
-        
-        email = idinfo['email']
-        name = idinfo.get('name', '')
-        google_id = idinfo['sub']
-        picture = idinfo.get('picture', '')
-        
-        # Check if customer exists
-        customer = db.query(models.Customer).filter(models.Customer.email == email).first()
-        
-        if not customer:
-            # Create new customer
-            customer = models.Customer(
-                email=email,
-                full_name=name,
-                google_id=google_id,
-                profile_picture=picture,
-                hashed_password=None  # No password for Google users
-            )
-            db.add(customer)
-            db.commit()
-            db.refresh(customer)
-        else:
-            # Update Google ID if not set
-            if not customer.google_id:
-                customer.google_id = google_id
-                customer.profile_picture = picture
-                db.commit()
-        
-        access_token = auth.create_access_token(data={"sub": customer.email, "role": "customer"})
-        return {"access_token": access_token, "token_type": "bearer", "role": "customer"}
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid Google token")
-
-@app.post("/auth/google/provider", response_model=Token)
-def google_auth_provider(request: GoogleAuthRequest, db: Session = Depends(database.get_db)):
-    try:
-        GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
-        idinfo = id_token.verify_oauth2_token(request.token, requests.Request(), GOOGLE_CLIENT_ID)
-        
-        email = idinfo['email']
-        name = idinfo.get('name', '')
-        google_id = idinfo['sub']
-        picture = idinfo.get('picture', '')
-        
-        # Check if provider exists
-        provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.email == email).first()
-        
-        if not provider:
-            # Create new provider (minimal info, they'll complete profile later)
-            provider = models.ServiceProvider(
-                email=email,
-                full_name=name,
-                profile_picture=picture,
-                google_id=google_id,
-                hashed_password=None,  # No password for Google users
-                business_name=name,  # Default
-                city="",  # To be filled later
-                level="beginner"  # New providers start at beginner level
-            )
-            db.add(provider)
-            db.commit()
-            db.refresh(provider)
-        else:
-            # Update Google info if not set
-            if not provider.google_id:
-                provider.google_id = google_id
-                provider.profile_picture = picture
-                db.commit()
-        
-        access_token = auth.create_access_token(data={"sub": provider.email, "role": "provider", "provider_id": provider.id})
-        return {"access_token": access_token, "token_type": "bearer", "role": "provider"}
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid Google token")
 
 # --- File Upload Routes ---
 
@@ -687,6 +656,10 @@ async def update_booking_status(
             booking_date_local
         )
     elif status_update.status == "cancelled":
+        # Note: Standby request will be created only when customer opts-in
+        # Don't create automatically - let customer decide
+        pass
+        
         background_tasks.add_task(
             notifications.notify_booking_cancelled,
             customer.email,
@@ -901,7 +874,71 @@ async def create_bulk_time_slots(
         
         current_date += timedelta(days=1)
     
-    db.commit()
+    # Fix sequence before committing to prevent duplicate key errors
+    try:
+        from sqlalchemy import text
+        # Get current max ID and sequence value
+        max_id_result = db.execute(text("SELECT COALESCE(MAX(id), 0) FROM time_slots"))
+        max_id = max_id_result.scalar() or 0
+        
+        seq_result = db.execute(text("SELECT last_value FROM time_slots_id_seq"))
+        seq_val = seq_result.scalar() or 0
+        
+        # If sequence is behind or equal to max_id, fix it
+        if seq_val <= max_id:
+            new_seq_val = max_id + 100  # Set it well ahead to avoid conflicts
+            db.execute(text(f"SELECT setval('time_slots_id_seq', {new_seq_val}, false)"))
+            db.commit()  # Commit the sequence fix
+    except Exception as seq_error:
+        # If sequence fix fails, log but continue
+        print(f"Warning: Could not fix sequence: {seq_error}")
+        db.rollback()
+    
+    # Now commit the time slots
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        error_str = str(e).lower()
+        # Check if it's a duplicate key/sequence issue
+        is_sequence_error = (
+            "duplicate key" in error_str or 
+            "unique constraint" in error_str or 
+            "time_slots_pkey" in error_str or
+            "uniqueviolation" in error_str
+        )
+        
+        if is_sequence_error:
+            try:
+                from sqlalchemy import text
+                # Fix sequence to be much higher than max to avoid any gaps
+                result = db.execute(text("SELECT COALESCE(MAX(id), 0) FROM time_slots"))
+                max_id = result.scalar() or 0
+                new_seq_val = max_id + 1000  # Set it well ahead to avoid future conflicts
+                db.execute(text(f"SELECT setval('time_slots_id_seq', {new_seq_val}, false)"))
+                db.commit()
+                
+                # Re-add all slots and try again
+                for slot in created_slots:
+                    db.add(slot)
+                db.commit()
+            except Exception as retry_error:
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create time slots after sequence fix. Please try again. Error: {str(retry_error)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create time slots: {str(e)}"
+            )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create time slots: {str(e)}"
+        )
     
     return {
         "message": f"Created {len(created_slots)} time slots",
@@ -1314,38 +1351,65 @@ async def create_booking(
 @app.get("/customer/bookings")
 async def get_customer_bookings(current_customer: models.Customer = Depends(get_current_customer), db: Session = Depends(database.get_db)):
     """Get all bookings for the customer"""
-    bookings = db.query(models.Booking).filter(models.Booking.customer_id == current_customer.id).order_by(models.Booking.booking_date.desc()).all()
-    
-    result = []
-    for booking in bookings:
-        provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.id == booking.provider_id).first()
-        service = db.query(models.Service).filter(models.Service.id == booking.service_id).first()
+    try:
+        # Order by created_at descending (most recent first)
+        # This is safer than booking_date which might be None
+        bookings = db.query(models.Booking).filter(
+            models.Booking.customer_id == current_customer.id
+        ).order_by(models.Booking.created_at.desc()).all()
         
-        # Convert to provider timezone for display
-        provider_tz = provider.timezone if provider else "UTC"
-        booking_date_local = booking_utils.convert_to_timezone(booking.booking_date, provider_tz)
+        result = []
+        for booking in bookings:
+            try:
+                provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.id == booking.provider_id).first()
+                service = db.query(models.Service).filter(models.Service.id == booking.service_id).first()
+                
+                # Convert to provider timezone for display
+                provider_tz = provider.timezone if provider else "UTC"
+                try:
+                    if booking.booking_date:
+                        booking_date_local = booking_utils.convert_to_timezone(booking.booking_date, provider_tz)
+                        booking_date_local_str = booking_date_local.isoformat()
+                    else:
+                        booking_date_local_str = None
+                except Exception as tz_error:
+                    # Fallback if timezone conversion fails
+                    print(f"Timezone conversion error for booking {booking.id}: {tz_error}")
+                    booking_date_local_str = booking.booking_date.isoformat() if booking.booking_date else None
+                
+                result.append({
+                    "id": booking.id,
+                    "provider": {
+                        "id": provider.id if provider else None,
+                        "full_name": provider.full_name if provider else None,
+                        "business_name": provider.business_name if provider else None,
+                    },
+                    "service": {
+                        "id": service.id if service else None,
+                        "name": service.name if service else None,
+                        "price": service.price if service else None,
+                    },
+                    "booking_date": booking.booking_date.isoformat() if booking.booking_date else None,
+                    "booking_date_local": booking_date_local_str,
+                    "timezone": provider_tz,
+                    "status": booking.status,
+                    "notes": booking.notes,
+                    "created_at": booking.created_at.isoformat() if booking.created_at else None,
+                    "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "unpaid",
+                })
+            except Exception as e:
+                # Log error but continue processing other bookings
+                import traceback
+                print(f"Error processing booking {booking.id}: {e}")
+                print(traceback.format_exc())
+                continue
         
-        result.append({
-            "id": booking.id,
-            "provider": {
-                "id": provider.id if provider else None,
-                "full_name": provider.full_name if provider else None,
-                "business_name": provider.business_name if provider else None,
-            },
-            "service": {
-                "id": service.id if service else None,
-                "name": service.name if service else None,
-                "price": service.price if service else None,
-            },
-            "booking_date": booking.booking_date.isoformat(),
-            "booking_date_local": booking_date_local.isoformat(),
-            "timezone": provider_tz,
-            "status": booking.status,
-            "notes": booking.notes,
-            "created_at": booking.created_at.isoformat() if booking.created_at else None,
-            "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "unpaid",
-        })
-    return result
+        return result
+    except Exception as e:
+        import traceback
+        print(f"Error in get_customer_bookings: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to fetch bookings: {str(e)}")
 
 @app.put("/customer/bookings/{booking_id}/cancel")
 async def cancel_customer_booking(
@@ -1384,6 +1448,9 @@ async def cancel_customer_booking(
     
     db.commit()
     db.refresh(booking)
+    
+    # Note: Standby request will be created only when customer opts-in
+    # Don't create automatically - let customer decide
     
     # Send notification
     service = db.query(models.Service).filter(models.Service.id == booking.service_id).first()
@@ -1618,6 +1685,51 @@ async def get_payment_details(
         "paid_at": payment.paid_at
     }
 
+@app.get("/provider/payments")
+async def get_provider_payments(
+    current_provider: models.ServiceProvider = Depends(get_current_provider),
+    db: Session = Depends(database.get_db)
+):
+    """Get all payment transactions for the provider (transaction history)"""
+    payments = db.query(models.Payment).filter(
+        models.Payment.provider_id == current_provider.id
+    ).order_by(models.Payment.created_at.desc()).all()
+    
+    result = []
+    for payment in payments:
+        # Get booking and service details
+        booking = db.query(models.Booking).filter(models.Booking.id == payment.booking_id).first()
+        service = None
+        customer = None
+        if booking:
+            service = db.query(models.Service).filter(models.Service.id == booking.service_id).first()
+            customer = db.query(models.Customer).filter(models.Customer.id == payment.customer_id).first()
+        
+        result.append({
+            "id": payment.id,
+            "booking_id": payment.booking_id,
+            "amount": payment.amount,
+            "currency": payment.currency,
+            "status": payment.status,
+            "payment_method": payment.payment_method,
+            "stripe_payment_intent_id": payment.stripe_payment_intent_id,
+            "created_at": payment.created_at.isoformat() if payment.created_at else None,
+            "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+            "refunded_at": payment.refunded_at.isoformat() if payment.refunded_at else None,
+            "failure_reason": payment.failure_reason,
+            "service": {
+                "id": service.id if service else None,
+                "name": service.name if service else None,
+            } if service else None,
+            "customer": {
+                "id": customer.id if customer else None,
+                "full_name": customer.full_name if customer else None,
+                "email": customer.email if customer else None,
+            } if customer else None,
+        })
+    
+    return result
+
 @app.get("/customer/payments")
 async def get_customer_payments(
     current_customer: models.Customer = Depends(get_current_customer),
@@ -1734,6 +1846,82 @@ try:
     print("✅ Rating system module loaded")
 except ImportError as e:
     print(f"⚠️ Rating module not available: {e}")
+
+# Import Standby routes
+try:
+    from standby.routes import router as standby_router
+    app.include_router(standby_router)
+    print("✅ Standby support module loaded")
+except ImportError as e:
+    print(f"⚠️ Standby module not available: {e}")
+
+# Fallback list of major Pakistan cities (in case API fails)
+PAKISTAN_CITIES_FALLBACK = [
+    "Karachi", "Lahore", "Faisalabad", "Rawalpindi", "Multan", "Hyderabad", "Gujranwala",
+    "Peshawar", "Quetta", "Islamabad", "Bahawalpur", "Sargodha", "Sialkot", "Sukkur",
+    "Larkana", "Sheikhupura", "Rahim Yar Khan", "Jhang", "Dera Ghazi Khan", "Gujrat",
+    "Sahiwal", "Wah Cantonment", "Mardan", "Kasur", "Okara", "Mingora", "Nawabshah",
+    "Chiniot", "Kotri", "Kāmoke", "Hafizabad", "Kohat", "Jacobabad", "Shikarpur",
+    "Muzaffargarh", "Khanpur", "Gojra", "Bahawalnagar", "Abbottabad", "Muridke",
+    "Pakpattan", "Khuzdar", "Jhelum", "Chaman", "Kot Abdul Malik", "Dadu", "Mandi Bahauddin",
+    "Ahmadpur East", "Kamalia", "Tando Adam", "Khairpur", "Dera Ismail Khan", "Vehari",
+    "Nowshera", "Daska", "Burewala", "Shahkot", "Mianwali", "Kabirwala", "Chishtian",
+    "Hasilpur", "Attock", "Muzaffarabad", "Mian Channun", "Bhalwal", "Jaranwala",
+    "Chakwal", "Gujar Khan", "Khanewal"
+]
+
+@app.post("/pakistan-cities")
+async def get_pakistan_cities():
+    """
+    Fetch list of cities in Pakistan from external API
+    Returns list of city names
+    Falls back to hardcoded list if API fails
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://countriesnow.space/api/v0.1/countries/cities",
+                json={"country": "Pakistan"},
+                follow_redirects=True
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check if API returned success with data
+            if data.get("error") == False and "data" in data and isinstance(data["data"], list):
+                cities = data["data"]
+                # Remove duplicates and sort alphabetically
+                cities = sorted(list(set(cities)))
+                return {"cities": cities, "count": len(cities)}
+            elif data.get("error") == True:
+                # API returned an error message, use fallback
+                error_msg = data.get("msg", "Unknown error")
+                print(f"Cities API error: {error_msg}, using fallback list")
+                return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
+            else:
+                # Unexpected format, use fallback
+                print(f"Unexpected API response format, using fallback list")
+                return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
+    except httpx.TimeoutException as e:
+        print(f"Timeout error: {e}, using fallback list")
+        return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
+    except httpx.HTTPStatusError as e:
+        error_detail = f"Cities API returned error: {e.response.status_code}"
+        try:
+            error_body = e.response.json()
+            error_detail = error_body.get("msg", error_body.get("error", error_detail))
+        except:
+            pass
+        print(f"HTTP error: {error_detail}, using fallback list")
+        return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
+    except httpx.RequestError as e:
+        print(f"Request error: {e}, using fallback list")
+        return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
+    except Exception as e:
+        import traceback
+        print(f"Unexpected error: {e}, using fallback list")
+        print(traceback.format_exc())
+        return {"cities": sorted(PAKISTAN_CITIES_FALLBACK), "count": len(PAKISTAN_CITIES_FALLBACK), "fallback": True}
 
 @app.get("/")
 async def read_root():

@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import ServiceProvider, Service, Booking, TimeSlot, Customer
-from standby_models import StandbyQueue, StandbyNotification, StandbyRequest
+from models import StandbyQueue, StandbyNotification, StandbyRequest
 from booking_utils import check_provider_availability
 
 
@@ -144,20 +144,41 @@ class StandbyService:
         self,
         original_booking_date: datetime,
         service_id: int,
-        customer_id: int
+        customer_id: int,
+        original_provider_city: str = None
     ) -> List[Dict]:
         """
         Find available standby providers for a cancelled booking
+        Filters by: same category AND same city
         
         Args:
             original_booking_date: Original booking date/time
             service_id: Service ID that was booked
             customer_id: Customer ID
+            original_provider_city: City of the original provider (for filtering)
             
         Returns:
             List of available providers with their details
         """
         now = datetime.now(ZoneInfo("UTC"))
+        
+        # Get service details first to get category and original provider city
+        service = self.db.query(Service).filter(Service.id == service_id).first()
+        if not service:
+            return []
+        
+        # Get original provider to get city if not provided
+        if not original_provider_city:
+            original_booking = self.db.query(Booking).filter(
+                Booking.service_id == service_id
+            ).order_by(Booking.created_at.desc()).first()
+            
+            if original_booking:
+                original_provider = self.db.query(ServiceProvider).filter(
+                    ServiceProvider.id == original_booking.provider_id
+                ).first()
+                if original_provider:
+                    original_provider_city = original_provider.city
         
         # Find active standby entries that match the time slot
         # Look for providers with free slots around the same time (within 2 hours)
@@ -177,12 +198,7 @@ class StandbyService:
             )
         ).all()
         
-        # Get service details
-        service = self.db.query(Service).filter(Service.id == service_id).first()
-        if not service:
-            return []
-        
-        # Filter providers by availability and build result
+        # Filter providers by availability, category, and city
         available_providers = []
         for entry in standby_entries:
             provider = self.db.query(ServiceProvider).filter(
@@ -190,6 +206,10 @@ class StandbyService:
             ).first()
             
             if not provider or not provider.is_active:
+                continue
+            
+            # FILTER BY CITY: Must be in the same city as original provider
+            if original_provider_city and provider.city != original_provider_city:
                 continue
             
             # Check if provider actually has the service
@@ -200,10 +220,13 @@ class StandbyService:
                 )
             ).all()
             
-            # Check if provider has similar service or general availability
-            has_service = any(s.id == service_id or s.category == service.category for s in provider_services)
+            # FILTER BY CATEGORY: Must have service in same category
+            has_same_category = any(
+                s.category == service.category and s.category is not None 
+                for s in provider_services
+            )
             
-            if not has_service and entry.service_id is not None:
+            if not has_same_category:
                 continue
             
             # Check actual availability
@@ -234,7 +257,7 @@ class StandbyService:
                     "available_slot_date": entry.slot_date.isoformat(),
                     "slot_start_time": entry.slot_start_time.isoformat() if entry.slot_start_time else None,
                     "slot_end_time": entry.slot_end_time.isoformat() if entry.slot_end_time else None,
-                    "services": [{"id": s.id, "name": s.name, "price": s.price} for s in provider_services]
+                    "services": [{"id": s.id, "name": s.name, "price": s.price, "category": s.category} for s in provider_services]
                 })
         
         return available_providers
