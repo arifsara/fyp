@@ -195,7 +195,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-8">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold">Welcome to Dashboard! 👋</h1>
+          <h1 className="text-3xl font-bold">Welcome to Dashboard!</h1>
           <p className="text-muted-foreground">Manage your beauty services and portfolio.</p>
         </div>
       </div>
@@ -229,7 +229,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold">Welcome back, {dashboardData.provider.name}! 👋</h1>
+            <h1 className="text-3xl font-bold">Welcome back, {dashboardData.provider.name}!</h1>
             {dashboardData.provider.level && (
               <ProviderLevelBadge 
                 level={dashboardData.provider.level} 

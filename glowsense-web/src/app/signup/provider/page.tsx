@@ -54,6 +54,53 @@ export default function ProviderSignupPage() {
     setError("");
     setLoading(true);
 
+    // Validate name (only letters and spaces, no numbers or special characters)
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    if (!formData.name || !formData.name.trim()) {
+      setError("Full name is required");
+      setLoading(false);
+      return;
+    }
+    if (!nameRegex.test(formData.name.trim())) {
+      setError("Name should only contain letters and spaces (no numbers or special characters)");
+      setLoading(false);
+      return;
+    }
+
+    // Validate phone number (11 digits, numeric only)
+    const phoneRegex = /^\d+$/;
+    if (!formData.phone || !formData.phone.trim()) {
+      setError("Phone number is required");
+      setLoading(false);
+      return;
+    }
+    const phoneClean = formData.phone.trim().replace(/[\s-()]/g, ""); // Remove common formatting
+    if (!phoneRegex.test(phoneClean)) {
+      setError("Phone number should contain only numeric values");
+      setLoading(false);
+      return;
+    }
+    if (phoneClean.length !== 11) {
+      setError("Phone number must be exactly 11 digits");
+      setLoading(false);
+      return;
+    }
+
+    // Validate CNIC (13 digits, numeric only) - if provided
+    if (formData.cnicId && formData.cnicId.trim()) {
+      const cnicClean = formData.cnicId.trim().replace(/[\s-]/g, ""); // Remove spaces and dashes
+      if (!phoneRegex.test(cnicClean)) {
+        setError("CNIC should contain only numeric values");
+        setLoading(false);
+        return;
+      }
+      if (cnicClean.length !== 13) {
+        setError("CNIC must be exactly 13 digits");
+        setLoading(false);
+        return;
+      }
+    }
+
     // Validate password
     if (!formData.password || !formData.password.trim()) {
       setError("Password is required");
@@ -61,8 +108,17 @@ export default function ProviderSignupPage() {
       return;
     }
 
-    if (formData.password.trim().length < 6) {
+    const passwordClean = formData.password.trim();
+    if (passwordClean.length < 6) {
       setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    // Check for at least one special character
+    const specialCharRegex = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/;
+    if (!specialCharRegex.test(passwordClean)) {
+      setError("Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)");
       setLoading(false);
       return;
     }

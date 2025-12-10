@@ -28,6 +28,38 @@ export default function CustomerSignupPage() {
     setError("");
     setLoading(true);
 
+    // Validate name (only letters and spaces, no numbers or special characters)
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    if (!formData.name || !formData.name.trim()) {
+      setError("Full name is required");
+      setLoading(false);
+      return;
+    }
+    if (!nameRegex.test(formData.name.trim())) {
+      setError("Name should only contain letters and spaces (no numbers or special characters)");
+      setLoading(false);
+      return;
+    }
+
+    // Validate phone number (11 digits, numeric only)
+    const phoneRegex = /^\d+$/;
+    if (!formData.phone || !formData.phone.trim()) {
+      setError("Phone number is required");
+      setLoading(false);
+      return;
+    }
+    const phoneClean = formData.phone.trim().replace(/[\s-()]/g, ""); // Remove common formatting
+    if (!phoneRegex.test(phoneClean)) {
+      setError("Phone number should contain only numeric values");
+      setLoading(false);
+      return;
+    }
+    if (phoneClean.length !== 11) {
+      setError("Phone number must be exactly 11 digits");
+      setLoading(false);
+      return;
+    }
+
     // Validate password
     if (!formData.password || !formData.password.trim()) {
       setError("Password is required");
@@ -35,8 +67,17 @@ export default function CustomerSignupPage() {
       return;
     }
 
-    if (formData.password.trim().length < 6) {
+    const passwordClean = formData.password.trim();
+    if (passwordClean.length < 6) {
       setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    // Check for at least one special character
+    const specialCharRegex = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/;
+    if (!specialCharRegex.test(passwordClean)) {
+      setError("Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)");
       setLoading(false);
       return;
     }
@@ -48,11 +89,13 @@ export default function CustomerSignupPage() {
     }
 
     try {
+      const phoneClean = formData.phone.trim().replace(/[\s-()]/g, "");
+      
       const signupData = {
         email: formData.email,
         password: formData.password,
-        full_name: formData.name,
-        phone: formData.phone,
+        full_name: formData.name.trim(),
+        phone: phoneClean,
         location: formData.location || null
       };
 

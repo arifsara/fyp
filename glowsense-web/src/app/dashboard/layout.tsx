@@ -29,9 +29,6 @@ const getSidebarLinks = (role: string | null) => {
   if (role === "provider") {
     return [
       ...baseLinks,
-      { name: "Skin Analysis", href: "/dashboard/analysis", icon: ScanFace },
-      { name: "AR Try-On", href: "/dashboard/ar-try-on", icon: Camera },
-      { name: "Services", href: "/dashboard/services", icon: Search },
       { name: "Portfolio", href: "/dashboard/portfolio", icon: Camera },
       { name: "Bookings", href: "/dashboard/bookings", icon: Calendar },
       { name: "Ratings", href: "/dashboard/ratings", icon: Star },

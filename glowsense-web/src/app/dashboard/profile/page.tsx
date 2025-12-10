@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save, Upload, X, Briefcase, Loader2 } from "lucide-react";
 import ProviderLevelBadge from "@/components/rating/ProviderLevelBadge";
+import SignupLocation from "@/components/signup/SignupLocation";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -18,9 +19,18 @@ export default function ProfilePage() {
     fullName: "",
     email: "",
     phone: "",
+    city: "",
+    businessName: "",
+    bio: "",
     profilePhoto: "",
     level: "",
     levelInfo: null as { name: string; color: string; icon: string } | null,
+  });
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -51,18 +61,21 @@ export default function ProfilePage() {
     try {
       const role = localStorage.getItem("role");
       if (role === "provider") {
-        const res = await fetch("http://localhost:8000/provider/dashboard", {
+        const res = await fetch("http://localhost:8000/provider/profile", {
           headers: getAuthHeaders(),
         });
         if (!res.ok) throw new Error("Failed to fetch profile");
         const data = await res.json();
         setProfileData({
-          fullName: data.provider.name || "",
-          email: data.provider.email || "",
-          phone: data.provider.phone || "",
-          profilePhoto: data.provider.profile_photo || data.provider.profile_picture || "",
-          level: data.provider.level || "",
-          levelInfo: data.provider.level_info || null,
+          fullName: data.full_name || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          city: data.city || "",
+          businessName: data.business_name || "",
+          bio: data.bio || "",
+          profilePhoto: data.profile_photo || data.profile_picture || "",
+          level: data.level || "",
+          levelInfo: data.level_info || null,
         });
       }
     } catch (err: any) {
@@ -155,6 +168,9 @@ export default function ProfilePage() {
         body: JSON.stringify({
           full_name: profileData.fullName,
           phone: profileData.phone,
+          city: profileData.city,
+          business_name: profileData.businessName,
+          bio: profileData.bio,
         }),
       });
 
@@ -171,6 +187,69 @@ export default function ProfilePage() {
       setLoading(false);
     }
   };
+
+  const handleChangePassword = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    // Validate password
+    if (!passwordData.newPassword || !passwordData.newPassword.trim()) {
+      setError("New password is required");
+      setLoading(false);
+      return;
+    }
+
+    const passwordClean = passwordData.newPassword.trim();
+    if (passwordClean.length < 6) {
+      setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    // Check for at least one special character
+    const specialCharRegex = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/;
+    if (!specialCharRegex.test(passwordClean)) {
+      setError("Password must contain at least one special character");
+      setLoading(false);
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setError("Passwords do not match");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:8000/provider/change-password", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          current_password: passwordData.currentPassword,
+          new_password: passwordData.newPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to change password");
+      }
+
+      setSuccess("Password changed successfully!");
+      setShowChangePassword(false);
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLocationChange = useCallback((location: string) => {
+    setProfileData((prev) => ({ ...prev, city: location }));
+  }, []);
 
   const displayPhoto = previewUrl || (profileData.profilePhoto 
     ? (profileData.profilePhoto.startsWith('http') 
@@ -217,7 +296,11 @@ export default function ProfilePage() {
                 id="fullName" 
                 value={profileData.fullName}
                 onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
+                placeholder="Enter your full name"
               />
+              {profileData.fullName && (
+                <p className="text-xs text-muted-foreground">Current: {profileData.fullName}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -228,17 +311,58 @@ export default function ProfilePage() {
                 disabled
                 className="bg-muted"
               />
+              <p className="text-xs text-muted-foreground">Email cannot be changed</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">Phone Number</Label>
               <Input 
                 id="phone" 
                 type="tel" 
                 value={profileData.phone}
                 onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                placeholder="Enter 11-digit phone number"
               />
+              {profileData.phone && (
+                <p className="text-xs text-muted-foreground">Current: {profileData.phone}</p>
+              )}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Location (City)</Label>
+              <SignupLocation
+                onLocationChange={handleLocationChange}
+                value={profileData.city}
+                required={false}
+              />
+              {profileData.city && (
+                <p className="text-xs text-muted-foreground">Current location: {profileData.city}</p>
+              )}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="businessName">Business Name</Label>
+              <Input 
+                id="businessName" 
+                value={profileData.businessName}
+                onChange={(e) => setProfileData({ ...profileData, businessName: e.target.value })}
+                placeholder="Enter your business name"
+              />
+              {profileData.businessName && (
+                <p className="text-xs text-muted-foreground">Current: {profileData.businessName}</p>
+              )}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="bio">Bio / About</Label>
+              <textarea
+                id="bio"
+                className="flex min-h-[100px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={profileData.bio}
+                onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
+                placeholder="Tell us about your expertise, experience, and services..."
+              />
+              {profileData.bio && (
+                <p className="text-xs text-muted-foreground">Current bio: {profileData.bio.length} characters</p>
+              )}
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label>Profile Photo</Label>
               <div className="flex items-center gap-4">
                 <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -306,44 +430,82 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Preferences Card */}
-        <div className="bg-white p-6 rounded-2xl border border-border shadow-sm space-y-6">
-          <h2 className="text-xl font-semibold border-b pb-4">Beauty Preferences</h2>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="skinType">Skin Type</Label>
-              <Input id="skinType" placeholder="e.g. Dry, Oily, Combination" defaultValue="Combination" />
-            </div>
-            <div className="space-y-4 md:col-span-2">
-               <Label>Interests</Label>
-               <div className="flex flex-wrap gap-3">
-                 {["Skincare", "Haircare", "Makeup", "Nail Art", "Spa"].map((interest) => (
-                   <label key={interest} className="flex items-center gap-2 px-4 py-2 rounded-full border border-input hover:border-primary cursor-pointer bg-white has-[:checked]:bg-primary/5 has-[:checked]:border-primary has-[:checked]:text-primary transition-colors">
-                     <input type="checkbox" className="accent-primary h-4 w-4" defaultChecked={["Skincare", "Makeup"].includes(interest)} />
-                     <span className="text-sm font-medium">{interest}</span>
-                   </label>
-                 ))}
-               </div>
-            </div>
-          </div>
-        </div>
-
         {/* Security Card */}
         <div className="bg-white p-6 rounded-2xl border border-border shadow-sm space-y-6">
           <h2 className="text-xl font-semibold border-b pb-4">Account Security</h2>
           <div className="space-y-4">
-            <Button variant="outline" className="w-full sm:w-auto justify-start">
-              Change Password
-            </Button>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Two-Factor Authentication</Label>
-                <p className="text-sm text-muted-foreground">Add an extra layer of security to your account.</p>
+            {!showChangePassword ? (
+              <Button 
+                variant="outline" 
+                className="w-full sm:w-auto justify-start"
+                onClick={() => setShowChangePassword(true)}
+              >
+                Change Password
+              </Button>
+            ) : (
+              <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Change Password</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowChangePassword(false);
+                      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                      setError("");
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={passwordData.currentPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={passwordData.newPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                      placeholder="Enter new password (min 6 chars, 1 special char)"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={loading}
+                    className="w-full sm:w-auto"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Changing...
+                      </>
+                    ) : (
+                      "Change Password"
+                    )}
+                  </Button>
+                </div>
               </div>
-              <div className="h-6 w-11 rounded-full bg-muted relative cursor-pointer transition-colors hover:bg-muted/80">
-                 <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
-              </div>
-            </div>
+            )}
           </div>
         </div>
         

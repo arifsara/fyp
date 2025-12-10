@@ -230,9 +230,30 @@ class PaymentConfirm(BaseModel):
 @app.post("/signup/customer", response_model=Token)
 async def signup_customer(user: CustomerCreate, db: Session = Depends(database.get_db)):
     try:
+        import re
+        
         # Check if email exists in Customer table
         if db.query(models.Customer).filter(models.Customer.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already registered as Customer")
+
+        # Validate name (only letters and spaces)
+        if not user.full_name or not user.full_name.strip():
+            raise HTTPException(status_code=400, detail="Full name is required.")
+        
+        name_clean = user.full_name.strip()
+        if not re.match(r'^[a-zA-Z\s]+$', name_clean):
+            raise HTTPException(status_code=400, detail="Name should only contain letters and spaces (no numbers or special characters).")
+        
+        # Validate phone number (11 digits, numeric only)
+        if not user.phone or not user.phone.strip():
+            raise HTTPException(status_code=400, detail="Phone number is required.")
+        
+        phone_clean = re.sub(r'[\s\-()]', '', user.phone.strip())  # Remove spaces, dashes, parentheses
+        if not re.match(r'^\d+$', phone_clean):
+            raise HTTPException(status_code=400, detail="Phone number should contain only numeric values.")
+        
+        if len(phone_clean) != 11:
+            raise HTTPException(status_code=400, detail="Phone number must be exactly 11 digits.")
 
         # Validate password
         if not user.password:
@@ -244,13 +265,17 @@ async def signup_customer(user: CustomerCreate, db: Session = Depends(database.g
         
         if len(password_clean) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+        
+        # Check for at least one special character
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password_clean):
+            raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
 
         hashed_pwd = auth.get_password_hash(password_clean)
     
         new_user = models.Customer(
             email=user.email, 
-            full_name=user.full_name, 
-            phone=user.phone,
+            full_name=name_clean, 
+            phone=phone_clean,
             location=user.location,
             hashed_password=hashed_pwd
         )
@@ -293,9 +318,39 @@ async def login_customer(user: LoginRequest, db: Session = Depends(database.get_
 @app.post("/signup/provider", response_model=Token)
 async def signup_provider(user: ProviderCreate, db: Session = Depends(database.get_db)):
     try:
+        import re
+        
         # Check if email exists in Provider table
         if db.query(models.ServiceProvider).filter(models.ServiceProvider.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already registered as Provider")
+
+        # Validate name (only letters and spaces)
+        if not user.full_name or not user.full_name.strip():
+            raise HTTPException(status_code=400, detail="Full name is required.")
+        
+        name_clean = user.full_name.strip()
+        if not re.match(r'^[a-zA-Z\s]+$', name_clean):
+            raise HTTPException(status_code=400, detail="Name should only contain letters and spaces (no numbers or special characters).")
+        
+        # Validate phone number (11 digits, numeric only)
+        if not user.phone or not user.phone.strip():
+            raise HTTPException(status_code=400, detail="Phone number is required.")
+        
+        phone_clean = re.sub(r'[\s\-()]', '', user.phone.strip())  # Remove spaces, dashes, parentheses
+        if not re.match(r'^\d+$', phone_clean):
+            raise HTTPException(status_code=400, detail="Phone number should contain only numeric values.")
+        
+        if len(phone_clean) != 11:
+            raise HTTPException(status_code=400, detail="Phone number must be exactly 11 digits.")
+
+        # Validate CNIC (13 digits, numeric only) - if provided
+        if user.cnic_id and user.cnic_id.strip():
+            cnic_clean = re.sub(r'[\s\-]', '', user.cnic_id.strip())  # Remove spaces and dashes
+            if not re.match(r'^\d+$', cnic_clean):
+                raise HTTPException(status_code=400, detail="CNIC should contain only numeric values.")
+            
+            if len(cnic_clean) != 13:
+                raise HTTPException(status_code=400, detail="CNIC must be exactly 13 digits.")
 
         # Validate password
         if not user.password:
@@ -308,17 +363,26 @@ async def signup_provider(user: ProviderCreate, db: Session = Depends(database.g
         if len(password_clean) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
         
+        # Check for at least one special character
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password_clean):
+            raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
+        
         # Hash password
         hashed_pwd = auth.get_password_hash(password_clean)
     
+        # Clean CNIC if provided
+        cnic_clean = None
+        if user.cnic_id and user.cnic_id.strip():
+            cnic_clean = re.sub(r'[\s\-]', '', user.cnic_id.strip())
+    
         new_provider = models.ServiceProvider(
             email=user.email, 
-            full_name=user.full_name, 
-            phone=user.phone,
+            full_name=name_clean, 
+            phone=phone_clean,
             business_name=user.business_name,
             city=user.city,
             bio=user.bio,
-            cnic_id=user.cnic_id,
+            cnic_id=cnic_clean,
             certificates=user.certificates,
             business_license=user.business_license,
             hashed_password=hashed_pwd,
@@ -1109,6 +1173,42 @@ async def update_provider_profile_photo(request: dict, current_provider: models.
     db.commit()
     db.refresh(current_provider)
     return {"message": "Profile photo updated", "profile_photo": current_provider.profile_photo}
+
+@app.post("/provider/change-password")
+async def change_provider_password(request: dict, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
+    """Change provider password (no 2FA required)"""
+    import re
+    
+    current_password = request.get("current_password", "")
+    new_password = request.get("new_password", "")
+    
+    # Verify current password
+    if not current_provider.hashed_password:
+        raise HTTPException(status_code=400, detail="Account has no password set. Please contact support.")
+    
+    if not auth.verify_password(current_password, current_provider.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    
+    # Validate new password
+    if not new_password:
+        raise HTTPException(status_code=400, detail="New password is required.")
+    
+    password_clean = new_password.strip()
+    if not password_clean:
+        raise HTTPException(status_code=400, detail="Password cannot be empty or only whitespace.")
+    
+    if len(password_clean) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+    
+    # Check for at least one special character
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password_clean):
+        raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
+    
+    # Hash and update password
+    current_provider.hashed_password = auth.get_password_hash(password_clean)
+    db.commit()
+    
+    return {"message": "Password changed successfully"}
 
 # --- Customer Routes (View Providers) ---
 
