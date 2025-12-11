@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import BackgroundTasks
 print("🔄 Loading database...", flush=True)
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional, List
@@ -1297,16 +1297,139 @@ def get_current_customer(credentials: HTTPAuthorizationCredentials = Depends(sec
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
 
+@app.get("/customer/dashboard")
+async def get_customer_dashboard(current_customer: models.Customer = Depends(get_current_customer), db: Session = Depends(database.get_db)):
+    """Get dashboard data for customer: bookings, preferences, and stats"""
+    import json
+    
+    # Get customer bookings (recent 10)
+    bookings = db.query(models.Booking).filter(
+        models.Booking.customer_id == current_customer.id
+    ).order_by(models.Booking.created_at.desc()).limit(10).all()
+    
+    # Format bookings with provider and service details
+    formatted_bookings = []
+    for booking in bookings:
+        provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.id == booking.provider_id).first()
+        service = db.query(models.Service).filter(models.Service.id == booking.service_id).first()
+        formatted_bookings.append({
+            "id": booking.id,
+            "service_id": booking.service_id,
+            "provider_id": booking.provider_id,
+            "booking_date": booking.booking_date.isoformat() if booking.booking_date else None,
+            "status": booking.status,
+            "notes": booking.notes,
+            "created_at": booking.created_at.isoformat() if booking.created_at else None,
+            "provider": {
+                "id": provider.id if provider else None,
+                "full_name": provider.full_name if provider else None,
+                "business_name": provider.business_name if provider else None,
+            },
+            "service": {
+                "id": service.id if service else None,
+                "name": service.name if service else None,
+                "price": service.price if service else None,
+            }
+        })
+    
+    # Parse preferences
+    categories = []
+    if current_customer.categories:
+        try:
+            categories = json.loads(current_customer.categories)
+        except:
+            categories = []
+    
+    # Calculate stats
+    total_bookings = db.query(models.Booking).filter(models.Booking.customer_id == current_customer.id).count()
+    
+    return {
+        "customer": {
+            "id": current_customer.id,
+            "name": current_customer.full_name,
+            "email": current_customer.email,
+            "phone": current_customer.phone,
+            "location": current_customer.location,
+            "profile_picture": current_customer.profile_picture,
+            "skin_type": current_customer.skin_type,
+            "categories": categories,
+            "budget_range": current_customer.budget_range
+        },
+        "bookings": formatted_bookings,
+        "stats": {
+            "total_bookings": total_bookings
+        }
+    }
+
 @app.get("/customer/profile")
 async def get_customer_profile(current_customer: models.Customer = Depends(get_current_customer), db: Session = Depends(database.get_db)):
     """Get current customer profile"""
+    import json
+    categories = []
+    if current_customer.categories:
+        try:
+            categories = json.loads(current_customer.categories)
+        except:
+            categories = []
+    
     return {
         "id": current_customer.id,
         "email": current_customer.email,
         "full_name": current_customer.full_name,
         "phone": current_customer.phone,
+        "location": current_customer.location,
         "profile_picture": current_customer.profile_picture,
-        "is_active": current_customer.is_active
+        "is_active": current_customer.is_active,
+        "skin_type": current_customer.skin_type,
+        "categories": categories,
+        "budget_range": current_customer.budget_range
+    }
+
+@app.put("/customer/profile")
+async def update_customer_profile(request: dict, current_customer: models.Customer = Depends(get_current_customer), db: Session = Depends(database.get_db)):
+    """Update customer profile information including preferences"""
+    import json
+    
+    if "full_name" in request:
+        current_customer.full_name = request.get("full_name")
+    if "phone" in request:
+        current_customer.phone = request.get("phone")
+    if "location" in request:
+        current_customer.location = request.get("location")
+    if "skin_type" in request:
+        current_customer.skin_type = request.get("skin_type")
+    if "categories" in request:
+        categories = request.get("categories", [])
+        if isinstance(categories, list):
+            current_customer.categories = json.dumps(categories)
+        else:
+            current_customer.categories = None
+    if "budget_range" in request:
+        current_customer.budget_range = request.get("budget_range")
+    
+    db.commit()
+    db.refresh(current_customer)
+    
+    # Parse categories for response
+    categories = []
+    if current_customer.categories:
+        try:
+            categories = json.loads(current_customer.categories)
+        except:
+            categories = []
+    
+    return {
+        "message": "Profile updated",
+        "customer": {
+            "id": current_customer.id,
+            "full_name": current_customer.full_name,
+            "email": current_customer.email,
+            "phone": current_customer.phone,
+            "location": current_customer.location,
+            "skin_type": current_customer.skin_type,
+            "categories": categories,
+            "budget_range": current_customer.budget_range
+        }
     }
 
 @app.get("/services/{service_id}/available-slots")

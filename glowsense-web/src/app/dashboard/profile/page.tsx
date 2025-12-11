@@ -15,16 +15,22 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [role, setRole] = useState<string | null>(null);
   const [profileData, setProfileData] = useState({
     fullName: "",
     email: "",
     phone: "",
     city: "",
+    location: "",
     businessName: "",
     bio: "",
     profilePhoto: "",
     level: "",
     levelInfo: null as { name: string; color: string; icon: string } | null,
+    // Customer preferences
+    skinType: "",
+    categories: [] as string[],
+    budgetRange: "",
   });
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -38,10 +44,11 @@ export default function ProfilePage() {
   useEffect(() => {
     // Check authentication
     const token = localStorage.getItem("token");
-    const role = localStorage.getItem("role");
+    const currentRole = localStorage.getItem("role");
+    setRole(currentRole);
     
     if (!token) {
-      router.push(role === "provider" ? "/login/provider" : "/login/customer");
+      router.push(currentRole === "provider" ? "/login/provider" : "/login/customer");
       return;
     }
 
@@ -59,8 +66,8 @@ export default function ProfilePage() {
 
   const fetchProfileData = async () => {
     try {
-      const role = localStorage.getItem("role");
-      if (role === "provider") {
+      const currentRole = localStorage.getItem("role");
+      if (currentRole === "provider") {
         const res = await fetch("http://localhost:8000/provider/profile", {
           headers: getAuthHeaders(),
         });
@@ -71,11 +78,36 @@ export default function ProfilePage() {
           email: data.email || "",
           phone: data.phone || "",
           city: data.city || "",
+          location: "",
           businessName: data.business_name || "",
           bio: data.bio || "",
           profilePhoto: data.profile_photo || data.profile_picture || "",
           level: data.level || "",
           levelInfo: data.level_info || null,
+          skinType: "",
+          categories: [],
+          budgetRange: "",
+        });
+      } else if (currentRole === "customer") {
+        const res = await fetch("http://localhost:8000/customer/profile", {
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const data = await res.json();
+        setProfileData({
+          fullName: data.full_name || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          city: "",
+          location: data.location || "",
+          businessName: "",
+          bio: "",
+          profilePhoto: data.profile_picture || "",
+          level: "",
+          levelInfo: null,
+          skinType: data.skin_type || "",
+          categories: data.categories || [],
+          budgetRange: data.budget_range || "",
         });
       }
     } catch (err: any) {
@@ -161,22 +193,45 @@ export default function ProfilePage() {
     setError("");
     setSuccess("");
     try {
-      // Update profile information
-      const res = await fetch("http://localhost:8000/provider/profile", {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          full_name: profileData.fullName,
-          phone: profileData.phone,
-          city: profileData.city,
-          business_name: profileData.businessName,
-          bio: profileData.bio,
-        }),
-      });
+      const currentRole = localStorage.getItem("role");
+      
+      if (currentRole === "provider") {
+        // Update provider profile information
+        const res = await fetch("http://localhost:8000/provider/profile", {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            full_name: profileData.fullName,
+            phone: profileData.phone,
+            city: profileData.city,
+            business_name: profileData.businessName,
+            bio: profileData.bio,
+          }),
+        });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to update profile");
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.detail || "Failed to update profile");
+        }
+      } else if (currentRole === "customer") {
+        // Update customer profile information including preferences
+        const res = await fetch("http://localhost:8000/customer/profile", {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            full_name: profileData.fullName,
+            phone: profileData.phone,
+            location: profileData.location,
+            skin_type: profileData.skinType,
+            categories: profileData.categories,
+            budget_range: profileData.budgetRange,
+          }),
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.detail || "Failed to update profile");
+        }
       }
 
       setSuccess("Profile updated successfully!");
@@ -326,17 +381,31 @@ export default function ProfilePage() {
                 <p className="text-xs text-muted-foreground">Current: {profileData.phone}</p>
               )}
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Location (City)</Label>
-              <SignupLocation
-                onLocationChange={handleLocationChange}
-                value={profileData.city}
-                required={false}
-              />
-              {profileData.city && (
-                <p className="text-xs text-muted-foreground">Current location: {profileData.city}</p>
-              )}
-            </div>
+            {role === "provider" ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label>Location (City)</Label>
+                <SignupLocation
+                  onLocationChange={handleLocationChange}
+                  value={profileData.city}
+                  required={false}
+                />
+                {profileData.city && (
+                  <p className="text-xs text-muted-foreground">Current location: {profileData.city}</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 md:col-span-2">
+                <Label>Location (City)</Label>
+                <SignupLocation
+                  onLocationChange={(location) => setProfileData({ ...profileData, location })}
+                  value={profileData.location}
+                  required={false}
+                />
+                {profileData.location && (
+                  <p className="text-xs text-muted-foreground">Current location: {profileData.location}</p>
+                )}
+              </div>
+            )}
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="businessName">Business Name</Label>
               <Input 
@@ -429,6 +498,87 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Preferences Card - Only for Customers */}
+        {role === "customer" && (
+          <div className="bg-white p-6 rounded-2xl border border-border shadow-sm space-y-6">
+            <h2 className="text-xl font-semibold border-b pb-4">Preferences</h2>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="skinType">Skin Type</Label>
+                <select
+                  id="skinType"
+                  className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={profileData.skinType}
+                  onChange={(e) => setProfileData({ ...profileData, skinType: e.target.value })}
+                >
+                  <option value="">Select skin type</option>
+                  <option value="Normal">Normal</option>
+                  <option value="Oily">Oily</option>
+                  <option value="Dry">Dry</option>
+                  <option value="Combination">Combination</option>
+                  <option value="Sensitive">Sensitive</option>
+                </select>
+                {profileData.skinType && (
+                  <p className="text-xs text-muted-foreground">Current: {profileData.skinType}</p>
+                )}
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Category Preferences</Label>
+                <div className="space-y-3">
+                  {["Skincare", "Haircare", "Makeup"].map((category) => (
+                    <label key={category} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={profileData.categories.includes(category)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setProfileData({
+                              ...profileData,
+                              categories: [...profileData.categories, category],
+                            });
+                          } else {
+                            setProfileData({
+                              ...profileData,
+                              categories: profileData.categories.filter((c) => c !== category),
+                            });
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm">{category}</span>
+                    </label>
+                  ))}
+                </div>
+                {profileData.categories.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Selected: {profileData.categories.join(", ")}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="budgetRange">Budget Range</Label>
+                <select
+                  id="budgetRange"
+                  className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={profileData.budgetRange}
+                  onChange={(e) => setProfileData({ ...profileData, budgetRange: e.target.value })}
+                >
+                  <option value="">Select budget range</option>
+                  <option value="0-50">$0 - $50</option>
+                  <option value="50-100">$50 - $100</option>
+                  <option value="100-200">$100 - $200</option>
+                  <option value="200+">$200+</option>
+                </select>
+                {profileData.budgetRange && (
+                  <p className="text-xs text-muted-foreground">Current: {profileData.budgetRange}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Security Card */}
         <div className="bg-white p-6 rounded-2xl border border-border shadow-sm space-y-6">

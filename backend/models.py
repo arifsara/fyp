@@ -20,6 +20,11 @@ class Customer(Base):
     # Google OAuth
     google_id = Column(String, nullable=True, index=True)
     
+    # Preferences
+    skin_type = Column(String, nullable=True)  # e.g., "Oily", "Dry", "Combination", "Sensitive", "Normal"
+    categories = Column(Text, nullable=True)  # JSON array: ["Skincare", "Haircare", "Makeup"]
+    budget_range = Column(String, nullable=True)  # e.g., "0-50", "50-100", "100-200", "200+"
+    
     # Relationships
     payments = relationship("Payment", back_populates="customer", foreign_keys="Payment.customer_id")
 
