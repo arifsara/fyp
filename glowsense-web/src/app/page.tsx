@@ -18,7 +18,7 @@ export default function Home() {
               AI-powered skin analysis, AR makeup previews, and trusted beauty bookings — all in one place.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 min-w-[200px]">
-              <Link href="/ar-demo">
+              <Link href="/dashboard/ar-try-on">
                 <Button size="lg" className="w-full sm:w-auto text-lg h-12 px-8">
                   Try AR Demo
                 </Button>

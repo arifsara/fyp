@@ -207,8 +207,8 @@ async def get_available_standby_providers(
     db: Session = Depends(get_db)
 ):
     """Get available standby providers for a cancelled booking
-    Filters by: same category AND same city"""
-    from models import Booking, ServiceProvider
+    Filters by: same day (any time), same category, AND same location as customer"""
+    from models import Booking
     
     # Get cancelled booking
     booking = db.query(Booking).filter(
@@ -222,25 +222,21 @@ async def get_available_standby_providers(
     if booking.status != "cancelled":
         raise HTTPException(status_code=400, detail="Booking is not cancelled")
     
-    # Get original provider's city
-    original_provider = db.query(ServiceProvider).filter(
-        ServiceProvider.id == booking.provider_id
-    ).first()
-    
-    original_provider_city = original_provider.city if original_provider else None
+    # Get customer location
+    customer_location = current_customer.location
     
     standby_service = StandbyService(db)
     providers = standby_service.find_standby_providers(
         booking.booking_date,
         booking.service_id,
         current_customer.id,
-        original_provider_city
+        customer_location
     )
     
     return {
         "cancelled_booking_id": cancelled_booking_id,
         "original_booking_date": booking.booking_date.isoformat(),
-        "original_provider_city": original_provider_city,
+        "customer_location": customer_location,
         "available_providers": providers
     }
 
@@ -326,5 +322,165 @@ async def match_standby_provider(
         "message": "Provider matched successfully",
         "standby_request_id": match_data.standby_request_id,
         "provider_id": match_data.provider_id
+    }
+
+
+class StandbyBookingCreate(BaseModel):
+    cancelled_booking_id: int
+    provider_id: int
+    service_id: int
+    standby_queue_id: Optional[int] = None  # Optional if from standby queue
+    time_slot_id: Optional[int] = None  # Optional if from time slot
+    notes: Optional[str] = None
+
+
+@router.post("/customer/create-booking")
+async def create_standby_booking(
+    booking_data: StandbyBookingCreate,
+    background_tasks: BackgroundTasks,
+    current_customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Create a booking from standby provider selection"""
+    from models import Booking, Service, ServiceProvider, TimeSlot
+    import booking_utils
+    import notifications
+    
+    # Verify cancelled booking exists and belongs to customer
+    cancelled_booking = db.query(Booking).filter(
+        Booking.id == booking_data.cancelled_booking_id,
+        Booking.customer_id == current_customer.id,
+        Booking.status == "cancelled"
+    ).first()
+    
+    if not cancelled_booking:
+        raise HTTPException(status_code=404, detail="Cancelled booking not found")
+    
+    # Verify service exists and belongs to provider
+    service = db.query(Service).filter(
+        Service.id == booking_data.service_id,
+        Service.provider_id == booking_data.provider_id,
+        Service.is_active == True
+    ).first()
+    
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    # Verify provider exists
+    provider = db.query(ServiceProvider).filter(
+        ServiceProvider.id == booking_data.provider_id,
+        ServiceProvider.is_active == True
+    ).first()
+    
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Get booking date from either standby queue entry or time slot
+    booking_date = None
+    standby_entry = None
+    time_slot = None
+    
+    if booking_data.standby_queue_id:
+        # Provider from standby queue
+        standby_entry = db.query(StandbyQueue).filter(
+            StandbyQueue.id == booking_data.standby_queue_id,
+            StandbyQueue.provider_id == booking_data.provider_id,
+            StandbyQueue.is_active == True
+        ).first()
+        
+        if not standby_entry:
+            raise HTTPException(status_code=404, detail="Standby slot not found or no longer available")
+        
+        booking_date = standby_entry.slot_date
+    elif booking_data.time_slot_id:
+        # Provider from time slot
+        time_slot = db.query(TimeSlot).filter(
+            TimeSlot.id == booking_data.time_slot_id,
+            TimeSlot.service_id == booking_data.service_id,
+            TimeSlot.is_available == True
+        ).first()
+        
+        if not time_slot:
+            raise HTTPException(status_code=404, detail="Time slot not found or no longer available")
+        
+        # Check if slot is already booked
+        existing_booking = db.query(Booking).filter(
+            Booking.time_slot_id == booking_data.time_slot_id,
+            Booking.status.in_(["pending", "confirmed"])
+        ).first()
+        
+        if existing_booking:
+            raise HTTPException(status_code=400, detail="This time slot is already booked")
+        
+        booking_date = time_slot.slot_date
+    else:
+        raise HTTPException(status_code=400, detail="Either standby_queue_id or time_slot_id must be provided")
+    
+    # Check if provider is available at this time
+    end_date = booking_utils.calculate_end_time(booking_date, service.duration)
+    if not booking_utils.check_provider_availability(db, provider.id, booking_date, end_date):
+        raise HTTPException(status_code=400, detail="Provider is no longer available at this time slot")
+    
+    # If we don't have a time slot yet (from standby queue), create or find one
+    if not time_slot:
+        time_slot = db.query(TimeSlot).filter(
+            TimeSlot.service_id == service.id,
+            TimeSlot.slot_date == booking_date,
+            TimeSlot.is_available == True
+        ).first()
+        
+        if not time_slot:
+            # Create a new time slot
+            time_slot = TimeSlot(
+                service_id=service.id,
+                slot_date=booking_date,
+                is_available=False  # Mark as unavailable since we're booking it
+            )
+            db.add(time_slot)
+            db.flush()
+    
+    # Create the booking
+    new_booking = Booking(
+        customer_id=current_customer.id,
+        provider_id=provider.id,
+        service_id=service.id,
+        time_slot_id=time_slot.id,
+        booking_date=booking_date,
+        end_date=end_date,
+        status="pending",
+        notes=booking_data.notes or f"Booked via standby support (replacing cancelled booking #{cancelled_booking.id})"
+    )
+    db.add(new_booking)
+    
+    # Mark standby queue entry as inactive if it exists
+    if standby_entry:
+        standby_entry.is_active = False
+    
+    # Mark time slot as unavailable
+    time_slot.is_available = False
+    
+    db.commit()
+    db.refresh(new_booking)
+    
+    # Convert to provider timezone for notification
+    provider_tz = provider.timezone or "UTC"
+    booking_date_provider_tz = booking_utils.convert_to_timezone(booking_date, provider_tz)
+    
+    # Send notification in background
+    background_tasks.add_task(
+        notifications.notify_booking_created,
+        current_customer.email,
+        current_customer.full_name or "Customer",
+        provider.full_name or provider.business_name,
+        service.name,
+        booking_date_provider_tz,
+        new_booking.id
+    )
+    
+    return {
+        "id": new_booking.id,
+        "message": "Booking created successfully from standby support. Waiting for provider approval.",
+        "status": new_booking.status,
+        "booking_date": booking_date_provider_tz.isoformat()
     }
 

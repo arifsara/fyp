@@ -2,9 +2,9 @@
 
 :root {
   /* Primary Pink Palette */
-  --primary: #FF4D8D;
+  --primary: #FF85A9;
   --primary-light: #FF85A9;
-  --primary-dark: #D43369;
+  --primary-dark: #FF85A9;
   
   /* Secondary/Neutral Palette */
   --background: #FFF5F7;
@@ -17,7 +17,7 @@
   --muted-foreground: #6B7280;
   
   --accent: #FFE4ED;
-  --accent-foreground: #FF4D8D;
+  --accent-foreground: #ea548d;
   
   --border: #E5E7EB;
   --input: #F9FAFB;

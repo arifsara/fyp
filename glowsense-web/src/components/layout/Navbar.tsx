@@ -9,8 +9,7 @@ import { cn } from "@/lib/utils";
 const navLinks = [
   { name: "Home", href: "/" },
   { name: "Features", href: "/#features" },
-  { name: "Services", href: "/services" },
-  { name: "About", href: "/about" },
+  { name: "Sign Up", href: "/signup" },
 ];
 
 export function Navbar() {

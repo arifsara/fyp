@@ -1,14 +1,14 @@
 # Fast imports first (these can be slow on some systems)
 import os
 import sys
-print("🔄 Loading FastAPI...", flush=True)
+print("Loading FastAPI...", flush=True)
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
-print("🔄 Loading middleware...", flush=True)
+print("Loading middleware...", flush=True)
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import BackgroundTasks
-print("🔄 Loading database...", flush=True)
+print("Loading database...", flush=True)
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
@@ -24,14 +24,12 @@ import httpx
 # Load environment variables from .env file
 load_dotenv()
 
-print("🔄 Loading modules...", flush=True)
+print("Loading modules...", flush=True)
 import models, auth, database
 import booking_utils
 import notifications
 import google_calendar
 
-# Google OAuth authentication removed - using password-based authentication only
-# Note: google_calendar is kept for calendar integration (separate from authentication)
 
 from jose import jwt, JWTError
 
@@ -41,27 +39,24 @@ try:
     import stripe
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
     if stripe.api_key:
-        print("✅ Stripe payment integration enabled")
+        print("Stripe payment integration enabled")
     else:
-        print("⚠️ Stripe secret key not set. Payment functionality disabled.")
+        print(" Stripe secret key not set. Payment functionality disabled.")
         stripe = None
 except ImportError:
-    print("⚠️ Stripe not installed. Payment functionality disabled.")
+    print("Stripe not installed. Payment functionality disabled.")
     stripe = None
 
 # Optional: APScheduler for reminders (gracefully handle if not installed)
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     scheduler = AsyncIOScheduler()
-    # Don't start scheduler here - it needs a running event loop
-    # Will be started in startup event if needed
-    print("✅ APScheduler available for booking reminders")
+    print(" APScheduler available for booking reminders")
 except ImportError:
     scheduler = None
-    print("⚠️ APScheduler not installed. Reminder functionality will be limited.")
+    print(" APScheduler not installed. Reminder functionality will be limited.")
 
-# Create Database Tables (This will create 'customers' and 'service_providers')
-# Made non-blocking with error handling to prevent startup hangs
+
 try:
     print("🔄 Connecting to database...")
     # Test connection first (with timeout)
@@ -72,11 +67,11 @@ try:
     
     # Create tables (non-blocking)
     models.Base.metadata.create_all(bind=database.engine)
-    print("✅ Database tables ready")
+    print(" Database tables ready")
 except Exception as e:
-    print(f"⚠️ Database connection issue: {e}")
-    print("⚠️ Server will start but database operations may fail")
-    print("⚠️ Please ensure PostgreSQL is running and connection string is correct")
+    print(f" Database connection issue: {e}")
+    print(" Server will start but database operations may fail")
+    print(" Please ensure PostgreSQL is running and connection string is correct")
 
 # Setup Upload Directory
 UPLOAD_DIR = "uploads"
@@ -94,9 +89,9 @@ async def startup_event():
     if scheduler:
         try:
             scheduler.start()
-            print("✅ APScheduler started for booking reminders")
+            print(" APScheduler started for booking reminders")
         except Exception as e:
-            print(f"⚠️ Failed to start scheduler: {e}")
+            print(f" Failed to start scheduler: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -104,9 +99,9 @@ async def shutdown_event():
     if scheduler:
         try:
             scheduler.shutdown()
-            print("✅ APScheduler stopped")
+            print(" APScheduler stopped")
         except Exception as e:
-            print(f"⚠️ Error stopping scheduler: {e}")
+            print(f" Error stopping scheduler: {e}")
 
 app.add_middleware(
     CORSMiddleware,

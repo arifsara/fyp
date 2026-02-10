@@ -8,15 +8,11 @@ SECRET_KEY = "supersecretkey_change_this_in_production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# SWITCHED TO ARGON2 (No 72 byte limit, more secure)
-# Optimized for faster verification while maintaining security
-# time_cost=2: Faster verification (default is 3, higher = slower but more secure)
-# memory_cost=65536: 64MB memory (default is 65536, good balance)
-# parallelism=1: Single thread (default is 1, increase for multi-core but uses more memory)
+
 pwd_context = CryptContext(
     schemes=["argon2"],
     deprecated="auto",
-    argon2__time_cost=2,  # Reduced from default 3 for faster login
+    argon2__time_cost=2,  
     argon2__memory_cost=65536,  # 64MB (default, good balance)
     argon2__parallelism=1  # Single thread
 )

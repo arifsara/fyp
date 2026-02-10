@@ -26,7 +26,8 @@ interface StandbyProvider {
     icon: string;
   };
   average_rating: number;
-  standby_queue_id: number;
+  standby_queue_id?: number | null;  // Optional if from standby queue
+  time_slot_id?: number | null;  // Optional if from time slot
   available_slot_date: string;
   services: Array<{ id: number; name: string; price: string }>;
 }
@@ -45,12 +46,15 @@ export default function CustomerStandbyModal({
   onProviderSelected,
 }: CustomerStandbyModalProps) {
   const [loading, setLoading] = useState(false);
+  const [creatingBooking, setCreatingBooking] = useState(false);
   const [providers, setProviders] = useState<StandbyProvider[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<StandbyProvider | null>(null);
+  const [originalServiceId, setOriginalServiceId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && cancelledBookingId) {
+      fetchCancelledBooking();
       fetchAvailableProviders();
     }
   }, [isOpen, cancelledBookingId]);
@@ -61,6 +65,23 @@ export default function CustomerStandbyModal({
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
     };
+  };
+
+  const fetchCancelledBooking = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/customer/bookings", {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const cancelledBooking = data.find((b: any) => b.id === cancelledBookingId);
+        if (cancelledBooking && cancelledBooking.service) {
+          setOriginalServiceId(cancelledBooking.service.id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch cancelled booking:", err);
+    }
   };
 
   const fetchAvailableProviders = async () => {
@@ -88,13 +109,72 @@ export default function CustomerStandbyModal({
   };
 
   const handleSelectProvider = async (provider: StandbyProvider) => {
-    setSelectedProvider(provider);
-    if (onProviderSelected) {
-      onProviderSelected(provider.provider_id);
+    if (creatingBooking) return;
+    
+    setCreatingBooking(true);
+    setError(null);
+    
+    try {
+      // Find a matching service from the provider's services
+      // Prefer a service with the same category as the original, or use the first available
+      let selectedService = provider.services[0];
+      if (originalServiceId && provider.services.length > 1) {
+        // Try to find a service with similar characteristics (you could enhance this)
+        const preferredService = provider.services.find((s) => s.id === originalServiceId);
+        if (preferredService) {
+          selectedService = preferredService;
+        }
+      }
+      
+      if (!selectedService) {
+        throw new Error("No service available for this provider");
+      }
+      
+      // Create booking via standby endpoint
+      const bookingPayload: any = {
+        cancelled_booking_id: cancelledBookingId,
+        provider_id: provider.provider_id,
+        service_id: selectedService.id,
+        notes: `Booked via standby support`
+      };
+      
+      // Include either standby_queue_id or time_slot_id
+      if (provider.standby_queue_id) {
+        bookingPayload.standby_queue_id = provider.standby_queue_id;
+      } else if (provider.time_slot_id) {
+        bookingPayload.time_slot_id = provider.time_slot_id;
+      }
+      
+      const res = await fetch("http://localhost:8000/standby/customer/create-booking", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(bookingPayload),
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to create booking");
+      }
+      
+      const result = await res.json();
+      alert("Booking created successfully! Waiting for provider approval.");
+      
+      if (onProviderSelected) {
+        onProviderSelected(provider.provider_id);
+      }
+      
+      onClose();
+      
+      // Refresh the page or trigger a callback to refresh bookings
+      if (window.location.pathname.includes("my-bookings")) {
+        window.location.reload();
+      }
+    } catch (err: any) {
+      console.error("Failed to create standby booking:", err);
+      setError(err.message || "Failed to create booking. Please try again.");
+    } finally {
+      setCreatingBooking(false);
     }
-    // Here you would typically create a new booking with the selected provider
-    // For now, we'll just close the modal
-    onClose();
   };
 
   return (
@@ -113,9 +193,9 @@ export default function CustomerStandbyModal({
             <p className="ml-2 text-muted-foreground">Finding available providers...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-8 text-red-500">
-            <p>{error}</p>
-            <Button variant="outline" onClick={fetchAvailableProviders} className="mt-4">
+          <div className="text-center py-8">
+            <p className="text-red-500 mb-4">{error}</p>
+            <Button variant="outline" onClick={fetchAvailableProviders} disabled={loading}>
               Try Again
             </Button>
           </div>
@@ -189,8 +269,16 @@ export default function CustomerStandbyModal({
                       onClick={() => handleSelectProvider(provider)}
                       className="w-full sm:w-auto"
                       size="sm"
+                      disabled={creatingBooking}
                     >
-                      Select This Provider
+                      {creatingBooking ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating Booking...
+                        </>
+                      ) : (
+                        "Book This Provider"
+                      )}
                     </Button>
                   </div>
                 </div>

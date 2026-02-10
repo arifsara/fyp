@@ -145,52 +145,52 @@ class StandbyService:
         original_booking_date: datetime,
         service_id: int,
         customer_id: int,
-        original_provider_city: str = None
+        customer_location: str = None
     ) -> List[Dict]:
         """
         Find available standby providers for a cancelled booking
-        Filters by: same category AND same city
+        Filters by: same day (any time), same category, AND same location as customer
         
         Args:
             original_booking_date: Original booking date/time
             service_id: Service ID that was booked
             customer_id: Customer ID
-            original_provider_city: City of the original provider (for filtering)
+            customer_location: Customer's location/city (for filtering)
             
         Returns:
             List of available providers with their details
         """
         now = datetime.now(ZoneInfo("UTC"))
         
-        # Get service details first to get category and original provider city
+        # Get service details first to get category
         service = self.db.query(Service).filter(Service.id == service_id).first()
         if not service:
             return []
         
-        # Get original provider to get city if not provided
-        if not original_provider_city:
-            original_booking = self.db.query(Booking).filter(
-                Booking.service_id == service_id
-            ).order_by(Booking.created_at.desc()).first()
-            
-            if original_booking:
-                original_provider = self.db.query(ServiceProvider).filter(
-                    ServiceProvider.id == original_booking.provider_id
-                ).first()
-                if original_provider:
-                    original_provider_city = original_provider.city
+        # Get customer to get location if not provided
+        if not customer_location:
+            customer = self.db.query(Customer).filter(Customer.id == customer_id).first()
+            if customer:
+                customer_location = customer.location
         
-        # Find active standby entries that match the time slot
-        # Look for providers with free slots around the same time (within 2 hours)
-        time_window_start = original_booking_date - timedelta(hours=2)
-        time_window_end = original_booking_date + timedelta(hours=2)
+        if not customer_location:
+            # If customer has no location, return empty list
+            return []
         
+        # Extract the date from original booking (same day, any time)
+        # Get start and end of the day for the original booking date
+        original_date = original_booking_date.date()
+        day_start = datetime.combine(original_date, datetime.min.time()).replace(tzinfo=ZoneInfo("UTC"))
+        day_end = day_start + timedelta(days=1)
+        
+        # Find active standby entries that match the same day
+        # Look for providers with free slots on the same day (any time)
         standby_entries = self.db.query(StandbyQueue).filter(
             and_(
                 StandbyQueue.is_active == True,
                 StandbyQueue.expires_at > now,
-                StandbyQueue.slot_date >= time_window_start,
-                StandbyQueue.slot_date <= time_window_end,
+                StandbyQueue.slot_date >= day_start,
+                StandbyQueue.slot_date < day_end,
                 or_(
                     StandbyQueue.service_id == service_id,
                     StandbyQueue.service_id == None  # General availability
@@ -198,8 +198,39 @@ class StandbyService:
             )
         ).all()
         
-        # Filter providers by availability, category, and city
+        # Also find providers with available TimeSlots on the same day
+        # This includes providers who have created time slots but haven't added to standby queue
+        available_time_slots = self.db.query(TimeSlot).join(Service).filter(
+            and_(
+                TimeSlot.is_available == True,
+                TimeSlot.slot_date >= day_start,
+                TimeSlot.slot_date < day_end,
+                Service.category == service.category,
+                Service.is_active == True
+            )
+        ).all()
+        
+        # Debug logging
+        print(f"[Standby Debug] Date range: {day_start} to {day_end}")
+        print(f"[Standby Debug] Standby entries found: {len(standby_entries)}")
+        print(f"[Standby Debug] Time slots found: {len(available_time_slots)}")
+        print(f"[Standby Debug] Customer location: {customer_location}, Service category: {service.category}")
+        
+        # Get unique provider IDs from time slots
+        provider_ids_from_slots = set()
+        time_slots_by_provider = {}
+        for slot in available_time_slots:
+            provider_id = slot.service.provider_id
+            provider_ids_from_slots.add(provider_id)
+            if provider_id not in time_slots_by_provider:
+                time_slots_by_provider[provider_id] = []
+            time_slots_by_provider[provider_id].append(slot)
+        
+        # Filter providers by availability, category, and customer location
         available_providers = []
+        processed_provider_ids = set()
+        
+        # Process standby queue entries first
         for entry in standby_entries:
             provider = self.db.query(ServiceProvider).filter(
                 ServiceProvider.id == entry.provider_id
@@ -208,8 +239,8 @@ class StandbyService:
             if not provider or not provider.is_active:
                 continue
             
-            # FILTER BY CITY: Must be in the same city as original provider
-            if original_provider_city and provider.city != original_provider_city:
+            # FILTER BY LOCATION: Must be in the same location as customer
+            if customer_location and provider.city != customer_location:
                 continue
             
             # Check if provider actually has the service
@@ -259,6 +290,84 @@ class StandbyService:
                     "slot_end_time": entry.slot_end_time.isoformat() if entry.slot_end_time else None,
                     "services": [{"id": s.id, "name": s.name, "price": s.price, "category": s.category} for s in provider_services]
                 })
+                processed_provider_ids.add(provider.id)
+        
+        # Now process providers from available TimeSlots (who may not be in standby queue)
+        for provider_id in provider_ids_from_slots:
+            if provider_id in processed_provider_ids:
+                continue  # Already processed from standby queue
+                
+            provider = self.db.query(ServiceProvider).filter(
+                ServiceProvider.id == provider_id,
+                ServiceProvider.is_active == True
+            ).first()
+            
+            if not provider:
+                continue
+            
+            # FILTER BY LOCATION: Must be in the same location as customer
+            if customer_location and provider.city != customer_location:
+                continue
+            
+            # Get provider services
+            provider_services = self.db.query(Service).filter(
+                and_(
+                    Service.provider_id == provider.id,
+                    Service.is_active == True
+                )
+            ).all()
+            
+            # FILTER BY CATEGORY: Must have service in same category
+            has_same_category = any(
+                s.category == service.category and s.category is not None 
+                for s in provider_services
+            )
+            
+            if not has_same_category:
+                continue
+            
+            # Get available time slots for this provider on this day
+            provider_slots = time_slots_by_provider.get(provider_id, [])
+            if not provider_slots:
+                continue
+            
+            # Check if any slot is actually available (not booked)
+            available_slot = None
+            for slot in provider_slots:
+                # Check if slot is not booked
+                existing_booking = self.db.query(Booking).filter(
+                    Booking.time_slot_id == slot.id,
+                    Booking.status.in_(["pending", "confirmed"])
+                ).first()
+                
+                if not existing_booking:
+                    available_slot = slot
+                    break
+            
+            if not available_slot:
+                continue
+            
+            # Get provider rating
+            from services.provider_level_service import ProviderLevelService
+            avg_rating = ProviderLevelService.get_provider_average_rating(provider.id, self.db)
+            level_info = ProviderLevelService.get_level_info(provider.level or "beginner")
+            
+            available_providers.append({
+                "provider_id": provider.id,
+                "provider_name": provider.full_name,
+                "business_name": provider.business_name,
+                "city": provider.city,
+                "profile_picture": provider.profile_picture or provider.profile_photo,
+                "level": provider.level or "beginner",
+                "level_info": level_info,
+                "average_rating": avg_rating,
+                "standby_queue_id": None,  # Not from standby queue
+                "time_slot_id": available_slot.id,  # Use time slot ID instead
+                "available_slot_date": available_slot.slot_date.isoformat(),
+                "slot_start_time": None,
+                "slot_end_time": None,
+                "services": [{"id": s.id, "name": s.name, "price": s.price, "category": s.category} for s in provider_services]
+            })
         
         return available_providers
     

@@ -1,7 +1,5 @@
 # How to Get Your Stripe Publishable Key
-
 ## Step-by-Step Guide
-
 ### 1. Go to Stripe Dashboard
 Visit: https://dashboard.stripe.com/test/apikeys
 

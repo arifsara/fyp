@@ -464,6 +464,43 @@ export default function MyBookingsPage() {
                   )}
                 </div>
               )}
+
+              {/* Apply for Standby Button - Only show for cancelled bookings when filter is "cancelled" */}
+              {booking.status === "cancelled" && filter === "cancelled" && (
+                <div className="pt-4 border-t border-border">
+                  <Button
+                    onClick={async () => {
+                      // Check for available providers
+                      try {
+                        const res = await fetch(
+                          `http://localhost:8000/standby/customer/available-providers?cancelled_booking_id=${booking.id}`,
+                          { headers: getAuthHeaders() }
+                        );
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.available_providers && data.available_providers.length > 0) {
+                            setCancelledBookingId(booking.id);
+                            setShowStandbyModal(true);
+                          } else {
+                            alert("No available service providers found for this time slot in your location.");
+                          }
+                        } else {
+                          alert("Failed to check for available providers. Please try again.");
+                        }
+                      } catch (err) {
+                        console.error("Failed to check for available providers", err);
+                        alert("Failed to check for available providers. Please try again.");
+                      }
+                    }}
+                    className="w-full"
+                    size="sm"
+                    variant="default"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Apply for Standby
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
