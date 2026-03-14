@@ -21,7 +21,9 @@ interface Provider {
   business_name: string;
 }
 
-export default function BookServicePage() {
+import { Suspense } from "react";
+
+function BookServicePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const serviceId = searchParams.get("serviceId");
@@ -280,3 +282,15 @@ export default function BookServicePage() {
   );
 }
 
+export default function BookServicePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-muted-foreground">Loading...</span>
+      </div>
+    }>
+      <BookServicePageContent />
+    </Suspense>
+  );
+}

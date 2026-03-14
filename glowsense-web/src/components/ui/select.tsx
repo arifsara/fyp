@@ -35,6 +35,7 @@ const Select = ({ value = "", onValueChange, children, required, disabled }: Sel
 
 interface SelectTriggerProps extends React.HTMLAttributes<HTMLButtonElement> {
   id?: string;
+  disabled?: boolean;
 }
 
 const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(

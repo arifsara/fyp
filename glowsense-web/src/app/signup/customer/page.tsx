@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User, Loader2, ArrowLeft } from "lucide-react";
 import SignupLocation from "@/components/signup/SignupLocation";
+import { GoogleAuthButton } from "@/components/GOOGLE AUTH/GoogleAuthButton";
+import { useSession } from "next-auth/react";
 
 export default function CustomerSignupPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "", location: "" });
+  const [emailLocked, setEmailLocked] = useState(false);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
@@ -22,6 +27,80 @@ export default function CustomerSignupPage() {
   const handleLocationChange = useCallback((location: string) => {
     setFormData((prev) => ({ ...prev, location }));
   }, []);
+
+  useEffect(() => {
+    // Handle redirect from Google. If the user already exists in the backend, we should automatically authenticate them.
+    const handleGoogleSignupAuth = async () => {
+      if (status === "authenticated" && session && (session as any).id_token) {
+        
+        // Let's attempt to use it specifically as a login intent first just in case they're already registered
+        try {
+          const res = await fetch("http://localhost:8000/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id_token: (session as any).id_token,
+              role: "customer",
+              intent: "signup",  // intent "signup" returns `already_registered` boolean
+            }),
+          });
+          
+          if (res.ok) {
+             const data = await res.json();
+             
+             // If already registered, seamlessly log them in and redirect to dashboard
+             if (data.already_registered) {
+                // To get the token we need to re-ping with login intent
+                const loginRes = await fetch("http://localhost:8000/auth/google", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    id_token: (session as any).id_token,
+                    role: "customer",
+                    intent: "login",
+                  }),
+                });
+                
+                if (loginRes.ok) {
+                   const loginData = await loginRes.json();
+                   if (loginData.access_token) {
+                     localStorage.setItem("token", loginData.access_token);
+                     localStorage.setItem("role", "customer");
+                     router.push("/dashboard");
+                     return;
+                   }
+                }
+             }
+          }
+        } catch(e) { /* ignore and fallback to normal prefills */ }
+
+        // If not registered, just prefill email/name
+        setFormData((prev) => ({
+          ...prev,
+          email: session.user?.email || "",
+          name: session.user?.name || prev.name,
+        }));
+        setEmailLocked(true);
+      }
+    };
+    
+    handleGoogleSignupAuth();
+
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const emailStr = params.get("email");
+    const from = params.get("from");
+    const nameStr = params.get("name");
+    if (emailStr && from === "google") {
+      setFormData((prev) => ({
+        ...prev,
+        email: emailStr,
+        name: nameStr || prev.name,
+      }));
+      setEmailLocked(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,15 +219,22 @@ export default function CustomerSignupPage() {
             
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
-              <Input id="name" required onChange={handleChange} />
+              <Input id="name" value={formData.name} required onChange={handleChange} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" required onChange={handleChange} />
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                disabled={emailLocked}
+                onChange={handleChange}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input id="phone" type="tel" required onChange={handleChange} />
+              <Input id="phone" type="tel" value={formData.phone} required onChange={handleChange} />
             </div>
             <SignupLocation
               onLocationChange={handleLocationChange}
@@ -158,11 +244,11 @@ export default function CustomerSignupPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required onChange={handleChange} />
+                <Input id="password" type="password" value={formData.password} required onChange={handleChange} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm</Label>
-                <Input id="confirmPassword" type="password" required onChange={handleChange} />
+                <Input id="confirmPassword" type="password" value={formData.confirmPassword} required onChange={handleChange} />
               </div>
             </div>
 
@@ -170,6 +256,14 @@ export default function CustomerSignupPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Sign Up"}
             </Button>
           </form>
+
+          <div className="mt-4">
+            <GoogleAuthButton
+              role="customer"
+              intent="signup"
+              text="Continue with Google"
+            />
+          </div>
 
           <div className="text-center space-y-2">
             <p className="text-sm text-muted-foreground">

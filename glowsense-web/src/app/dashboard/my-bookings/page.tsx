@@ -6,14 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Clock, User, DollarSign, CheckCircle, XCircle, AlertCircle, MapPin, CreditCard, Star } from "lucide-react";
 import PaymentModal from "@/components/payment/PaymentModal";
 import RatingModal from "@/components/rating/RatingModal";
-import CustomerStandbyModal from "@/components/standby/CustomerStandbyModal";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 interface Booking {
   id: number;
@@ -43,11 +35,6 @@ export default function MyBookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [ratingStatus, setRatingStatus] = useState<Record<number, { isRated: boolean; canRate: boolean }>>({});
-  const [showStandbyModal, setShowStandbyModal] = useState(false);
-  const [showStandbyPrompt, setShowStandbyPrompt] = useState(false);
-  const [cancelledBookingId, setCancelledBookingId] = useState<number | null>(null);
-  const [pendingStandbyData, setPendingStandbyData] = useState<any>(null);
-
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -58,17 +45,6 @@ export default function MyBookingsPage() {
     }
     
     fetchBookings();
-    // Check for pending standby requests on page load
-    checkPendingStandbyRequest();
-    
-    // Set up polling to check for standby requests every 5 seconds
-    const standbyPollInterval = setInterval(() => {
-      checkPendingStandbyRequest();
-    }, 5000);
-    
-    return () => {
-      clearInterval(standbyPollInterval);
-    };
   }, []);
 
   useEffect(() => {
@@ -77,126 +53,7 @@ export default function MyBookingsPage() {
     completedBookings.forEach(booking => {
       checkRatingStatus(booking.id);
     });
-    
-    // Check for pending standby requests when bookings change
-    checkPendingStandbyRequest();
   }, [bookings]);
-  
-  const checkPendingStandbyRequest = async () => {
-    try {
-      const res = await fetch("http://localhost:8000/standby/customer/pending-request", {
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Standby request check:", data);
-        if (data.has_pending_request && data.cancelled_booking_id) {
-          if (data.needs_opt_in) {
-            // Check if providers are available before showing opt-in prompt
-            try {
-              const providersRes = await fetch(
-                `http://localhost:8000/standby/customer/available-providers?cancelled_booking_id=${data.cancelled_booking_id}`,
-                { headers: getAuthHeaders() }
-              );
-              if (providersRes.ok) {
-                const providersData = await providersRes.json();
-                // Only show opt-in prompt if there are available providers
-                if (providersData.available_providers && providersData.available_providers.length > 0) {
-                  setPendingStandbyData(data);
-                  setShowStandbyPrompt(true);
-                } else {
-                  // No providers available, don't show prompt
-                  console.log("No available providers, not showing standby opt-in prompt");
-                }
-              }
-            } catch (err) {
-              console.error("Failed to check available providers:", err);
-            }
-          } else {
-            // Already opted in, check if providers are available before showing modal
-            try {
-              const providersRes = await fetch(
-                `http://localhost:8000/standby/customer/available-providers?cancelled_booking_id=${data.cancelled_booking_id}`,
-                { headers: getAuthHeaders() }
-              );
-              if (providersRes.ok) {
-                const providersData = await providersRes.json();
-                // Only show modal if there are available providers
-                if (providersData.available_providers && providersData.available_providers.length > 0) {
-                  setCancelledBookingId(data.cancelled_booking_id);
-                  setShowStandbyModal(true);
-                } else {
-                  // No providers available, don't show modal
-                  console.log("No available providers, not showing standby modal");
-                }
-              }
-            } catch (err) {
-              console.error("Failed to check available providers:", err);
-            }
-          }
-        } else if (!data.has_pending_request) {
-          // Close modals if no pending request
-          if (showStandbyModal) setShowStandbyModal(false);
-          if (showStandbyPrompt) setShowStandbyPrompt(false);
-        }
-      } else {
-        console.error("Failed to check standby request:", res.status, res.statusText);
-      }
-    } catch (err) {
-      console.error("Failed to check standby request", err);
-    }
-  };
-
-  const handleOptInToStandby = async () => {
-    if (!pendingStandbyData?.cancelled_booking_id) return;
-    
-    try {
-      const res = await fetch("http://localhost:8000/standby/customer/opt-in", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ cancelled_booking_id: pendingStandbyData.cancelled_booking_id }),
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setShowStandbyPrompt(false);
-        
-        // Check if providers are available before showing modal
-        try {
-          const providersRes = await fetch(
-            `http://localhost:8000/standby/customer/available-providers?cancelled_booking_id=${pendingStandbyData.cancelled_booking_id}`,
-            { headers: getAuthHeaders() }
-          );
-          if (providersRes.ok) {
-            const providersData = await providersRes.json();
-            // Only show modal if there are available providers
-            if (providersData.available_providers && providersData.available_providers.length > 0) {
-              setCancelledBookingId(pendingStandbyData.cancelled_booking_id);
-              setShowStandbyModal(true);
-            } else {
-              // No providers available, don't show modal
-              console.log("No available providers, not showing standby modal");
-            }
-          }
-        } catch (err) {
-          console.error("Failed to check available providers:", err);
-        }
-        
-        setPendingStandbyData(null);
-      } else {
-        const errorData = await res.json();
-        alert(`Failed to opt-in: ${errorData.detail || "Unknown error"}`);
-      }
-    } catch (err: any) {
-      console.error("Failed to opt-in to standby", err);
-      alert(`Failed to opt-in: ${err.message || "Unknown error"}`);
-    }
-  };
-
-  const handleDeclineStandby = () => {
-    setShowStandbyPrompt(false);
-    setPendingStandbyData(null);
-  };
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -410,11 +267,13 @@ export default function MyBookingsPage() {
                   {booking.payment_status && (
                     <div className="mt-2">
                       <span className={`text-xs px-2 py-1 rounded-full ${
-                        booking.payment_status === "paid" 
+                    booking.payment_status === "RELEASED_TO_PROVIDER" 
                           ? "bg-green-100 text-green-700" 
-                          : booking.payment_status === "pending"
+                      : booking.payment_status === "HELD_IN_ESCROW"
                           ? "bg-yellow-100 text-yellow-700"
-                          : "bg-gray-100 text-gray-700"
+                      : booking.payment_status === "REFUNDED"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
                       }`}>
                         Payment: {booking.payment_status}
                       </span>
@@ -465,42 +324,6 @@ export default function MyBookingsPage() {
                 </div>
               )}
 
-              {/* Apply for Standby Button - Only show for cancelled bookings when filter is "cancelled" */}
-              {booking.status === "cancelled" && filter === "cancelled" && (
-                <div className="pt-4 border-t border-border">
-                  <Button
-                    onClick={async () => {
-                      // Check for available providers
-                      try {
-                        const res = await fetch(
-                          `http://localhost:8000/standby/customer/available-providers?cancelled_booking_id=${booking.id}`,
-                          { headers: getAuthHeaders() }
-                        );
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data.available_providers && data.available_providers.length > 0) {
-                            setCancelledBookingId(booking.id);
-                            setShowStandbyModal(true);
-                          } else {
-                            alert("No available service providers found for this time slot in your location.");
-                          }
-                        } else {
-                          alert("Failed to check for available providers. Please try again.");
-                        }
-                      } catch (err) {
-                        console.error("Failed to check for available providers", err);
-                        alert("Failed to check for available providers. Please try again.");
-                      }
-                    }}
-                    className="w-full"
-                    size="sm"
-                    variant="default"
-                  >
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    Apply for Standby
-                  </Button>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -546,51 +369,6 @@ export default function MyBookingsPage() {
         />
       )}
 
-      {/* Standby Support Opt-in Prompt */}
-      <Dialog open={showStandbyPrompt} onOpenChange={setShowStandbyPrompt}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Standby Support Available</DialogTitle>
-            <DialogDescription>
-              Your booking was cancelled. Would you like to use our automated standby support to find available service providers in the same category and city?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-3 mt-4">
-            <Button
-              onClick={handleOptInToStandby}
-              className="flex-1"
-            >
-              Yes, Show Available Providers
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleDeclineStandby}
-              className="flex-1"
-            >
-              No, Thanks
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Standby Support Modal */}
-      {cancelledBookingId && (
-        <CustomerStandbyModal
-          isOpen={showStandbyModal}
-          onClose={() => {
-            setShowStandbyModal(false);
-            setCancelledBookingId(null);
-            fetchBookings(); // Refresh bookings
-          }}
-          cancelledBookingId={cancelledBookingId}
-          onProviderSelected={(providerId) => {
-            console.log("Provider selected:", providerId);
-            setShowStandbyModal(false);
-            setCancelledBookingId(null);
-            fetchBookings(); // Refresh bookings
-          }}
-        />
-      )}
     </div>
   );
 }

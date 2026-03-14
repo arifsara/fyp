@@ -21,6 +21,14 @@ import uuid
 from dotenv import load_dotenv
 import httpx
 
+# Google OAuth (ID token verification)
+try:
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+except Exception:
+    google_id_token = None  # type: ignore
+    google_requests = None  # type: ignore
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -82,6 +90,12 @@ os.makedirs(f"{UPLOAD_DIR}/documents", exist_ok=True)
 
 app = FastAPI()
 
+# --- Include modular routers ---
+from ratings.routes import router as ratings_router
+from admin.routes import router as admin_router
+app.include_router(ratings_router)
+app.include_router(admin_router)
+
 # Startup event to initialize scheduler
 @app.on_event("startup")
 async def startup_event():
@@ -117,6 +131,10 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # Security
 security = HTTPBearer()
 
+# Google OAuth config
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
+
 # Dependency to get current provider from token
 def get_current_provider(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(database.get_db)):
     token = credentials.credentials
@@ -141,6 +159,7 @@ class CustomerCreate(BaseModel):
     full_name: str
     phone: str
     location: Optional[str] = None  # Customer location/city
+    id_token: Optional[str] = None
 
 class ProviderCreate(BaseModel):
     email: str
@@ -153,6 +172,7 @@ class ProviderCreate(BaseModel):
     cnic_id: Optional[str] = None
     certificates: Optional[str] = None
     business_license: Optional[str] = None
+    id_token: Optional[str] = None
 
 class LoginRequest(BaseModel):
     email: str
@@ -220,6 +240,14 @@ class PaymentConfirm(BaseModel):
     payment_intent_id: str
     booking_id: int
 
+
+class GoogleAuthRequest(BaseModel):
+    """Payload for Google OAuth sign-in from frontend (ID token based)."""
+    id_token: str
+    role: str  # "customer" or "provider"
+    intent: str  # "login" or "signup"
+
+
 # --- CUSTOMER Routes ---
 
 @app.post("/signup/customer", response_model=Token)
@@ -266,13 +294,25 @@ async def signup_customer(user: CustomerCreate, db: Session = Depends(database.g
             raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
 
         hashed_pwd = auth.get_password_hash(password_clean)
+        
+        google_id = None
+        picture = None
+        if user.id_token:
+            try:
+                idinfo = _verify_google_id_token(user.id_token)
+                google_id = idinfo.get("sub")
+                picture = idinfo.get("picture")
+            except Exception as e:
+                print(f"Warning: Failed to verify id_token during customer signup: {e}")
     
         new_user = models.Customer(
             email=user.email, 
             full_name=name_clean, 
             phone=phone_clean,
             location=user.location,
-            hashed_password=hashed_pwd
+            hashed_password=hashed_pwd,
+            google_id=google_id,
+            profile_picture=picture
         )
         db.add(new_user)
         db.commit()
@@ -307,6 +347,116 @@ async def login_customer(user: LoginRequest, db: Session = Depends(database.get_
     
     access_token = auth.create_access_token(data={"sub": db_user.email, "role": "customer", "customer_id": db_user.id})
     return {"access_token": access_token, "token_type": "bearer", "role": "customer"}
+
+
+def _verify_google_id_token(id_token_str: str) -> dict:
+    """Verify Google ID token and return decoded payload."""
+    if not google_id_token or not google_requests:
+        raise HTTPException(status_code=503, detail="Google OAuth libraries are not available on the server.")
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID is not configured on the server.")
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            id_token_str,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Google ID token: {e}")
+
+    if not idinfo.get("email"):
+        raise HTTPException(status_code=400, detail="Google token does not contain an email address.")
+    if not idinfo.get("email_verified", False):
+        raise HTTPException(status_code=400, detail="Google email address is not verified.")
+
+    return idinfo
+
+
+@app.post("/auth/google")
+async def google_auth(
+    payload: GoogleAuthRequest,
+    db: Session = Depends(database.get_db),
+):
+    """
+    Unified Google OAuth entry point for both login and signup flows.
+
+    Frontend sends an ID token obtained from Google Identity Services.
+    - intent = "login": if user exists and is active → issue JWT and log them in.
+                        if not exists → tell frontend to redirect to signup with pre-filled email.
+    - intent = "signup": just verify token and return profile info so signup forms can be pre-filled.
+    """
+    intent = payload.intent.lower().strip()
+    role = payload.role.lower().strip()
+
+    if role not in {"customer", "provider"}:
+        raise HTTPException(status_code=400, detail="Invalid role. Must be 'customer' or 'provider'.")
+    if intent not in {"login", "signup"}:
+        raise HTTPException(status_code=400, detail="Invalid intent. Must be 'login' or 'signup'.")
+
+    idinfo = _verify_google_id_token(payload.id_token)
+
+    email = idinfo.get("email")
+    google_sub = idinfo.get("sub")
+    full_name = idinfo.get("name")
+    picture = idinfo.get("picture")
+
+    Model = models.Customer if role == "customer" else models.ServiceProvider
+
+    user = db.query(Model).filter(Model.email == email).first()
+
+    # For signup intent: we never create the user here. We only return verified info
+    # so the frontend can prefill the form with a locked email.
+    if intent == "signup":
+        return {
+            "email": email,
+            "name": full_name,
+            "google_id": google_sub,
+            "picture": picture,
+            "role": role,
+            "already_registered": bool(user),
+        }
+
+    # intent == "login"
+    if not user:
+        # No account exists – frontend should redirect the user to appropriate signup page
+        # with pre-filled, non-editable email.
+        return {
+            "needs_signup": True,
+            "email": email,
+            "name": full_name,
+            "google_id": google_sub,
+            "picture": picture,
+            "role": role,
+        }
+
+    # Ensure user is active / approved
+    if hasattr(user, "is_active") and not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is not approved or is inactive.")
+
+    # Link Google account to existing user record (id + picture) if not already linked
+    updated = False
+    if hasattr(user, "google_id") and not user.google_id and google_sub:
+        user.google_id = google_sub
+        updated = True
+    # Customers and providers both have profile_picture field (provider also has profile_photo)
+    if picture and hasattr(user, "profile_picture") and not user.profile_picture:
+        user.profile_picture = picture  # type: ignore
+        updated = True
+
+    if updated:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token_data = {"sub": user.email, "role": role}
+    if role == "customer":
+        token_data["customer_id"] = user.id
+    else:
+        token_data["provider_id"] = user.id
+
+    access_token = auth.create_access_token(data=token_data)
+    return {"access_token": access_token, "token_type": "bearer", "role": role}
 
 # --- SERVICE PROVIDER Routes ---
 
@@ -369,6 +519,16 @@ async def signup_provider(user: ProviderCreate, db: Session = Depends(database.g
         cnic_clean = None
         if user.cnic_id and user.cnic_id.strip():
             cnic_clean = re.sub(r'[\s\-]', '', user.cnic_id.strip())
+            
+        google_id = None
+        picture = None
+        if user.id_token:
+            try:
+                idinfo = _verify_google_id_token(user.id_token)
+                google_id = idinfo.get("sub")
+                picture = idinfo.get("picture")
+            except Exception as e:
+                print(f"Warning: Failed to verify id_token during provider signup: {e}")
     
         new_provider = models.ServiceProvider(
             email=user.email, 
@@ -381,12 +541,34 @@ async def signup_provider(user: ProviderCreate, db: Session = Depends(database.g
             certificates=user.certificates,
             business_license=user.business_license,
             hashed_password=hashed_pwd,
-            level="beginner"  # New providers start at beginner level
+            level="beginner",
+            google_id=google_id,
+            profile_picture=picture
         )
         db.add(new_provider)
         db.commit()
         db.refresh(new_provider)
-        
+
+        # Create Stripe Express connected account for payouts (optional but recommended)
+        if stripe:
+            try:
+                connect_country = os.getenv("STRIPE_CONNECT_COUNTRY", "US")
+                account = stripe.Account.create(
+                    type="express",
+                    country=connect_country,
+                    email=new_provider.email,
+                    capabilities={
+                        "card_payments": {"requested": True},
+                        "transfers": {"requested": True},
+                    },
+                    business_type="individual",
+                )
+                new_provider.stripe_account_id = account.id
+                new_provider.stripe_onboarding_complete = False
+                db.commit()
+                db.refresh(new_provider)
+            except Exception as e:
+                print(f"Warning: Failed to create Stripe connected account for provider {new_provider.id}: {e}")
         access_token = auth.create_access_token(data={"sub": new_provider.email, "role": "provider", "provider_id": new_provider.id})
         return {"access_token": access_token, "token_type": "bearer", "role": "provider"}
     except HTTPException:
@@ -592,7 +774,10 @@ async def get_provider_bookings(current_provider: models.ServiceProvider = Depen
             "status": booking.status,
             "notes": booking.notes,
             "created_at": booking.created_at,
-            "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "unpaid",
+            "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "UNPAID",
+            "booking_status": getattr(booking, "booking_status", None),
+            "original_provider_id": getattr(booking, "original_provider_id", None),
+            "assigned_provider_id": getattr(booking, "assigned_provider_id", None),
         })
     return result
 
@@ -619,16 +804,17 @@ async def update_booking_status(
     old_status = booking.status
     
     # When provider accepts, set status to "accepted" (not "confirmed")
-    # Booking becomes "confirmed" only after payment
+    # Booking becomes "confirmed" only after payment has succeeded and funds are in escrow.
     if status_update.status == "confirmed":
-        # Only allow setting to "confirmed" if payment is already paid
-        if booking.payment_status != "paid":
+        # Only allow setting to "confirmed" if payment is already captured/held in escrow
+        if booking.payment_status not in ["HELD_IN_ESCROW", "RELEASED_TO_PROVIDER"]:
             raise HTTPException(
                 status_code=400, 
-                detail="Cannot confirm booking. Payment must be completed first. Use 'accepted' status to approve the booking."
+                detail="Cannot confirm booking. Payment must be completed and held in escrow first. Use 'accepted' status to approve the booking."
             )
     
     booking.status = status_update.status
+    booking.booking_status = status_update.status
     
     # Get customer and service for notifications
     customer = db.query(models.Customer).filter(models.Customer.id == booking.customer_id).first()
@@ -638,7 +824,7 @@ async def update_booking_status(
     booking_date_local = booking_utils.convert_to_timezone(booking.booking_date, provider_tz)
     
     # Google Calendar integration - only create event when booking is confirmed (after payment)
-    if status_update.status == "confirmed" and booking.payment_status == "paid" and current_provider.google_calendar_access_token:
+    if status_update.status == "confirmed" and booking.payment_status in ["HELD_IN_ESCROW", "RELEASED_TO_PROVIDER"] and current_provider.google_calendar_access_token:
         # Create calendar event
         if not booking.google_calendar_event_id:
             event_id = google_calendar.create_booking_calendar_event(
@@ -689,6 +875,84 @@ async def update_booking_status(
                     status="cancelled"
                 )
     
+    # Handle payout to provider when marking booking as completed
+    if status_update.status == "completed":
+        # Only attempt payout once, when funds are held in escrow
+        if booking.payment_status == "HELD_IN_ESCROW":
+            if not stripe:
+                raise HTTPException(status_code=503, detail="Stripe payment integration is not available")
+
+            provider = current_provider
+            if not provider.stripe_account_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Provider payouts are not set up. Please complete Stripe onboarding from the dashboard."
+                )
+
+            # Refresh onboarding status from Stripe to avoid stale DB flags
+            try:
+                account = stripe.Account.retrieve(provider.stripe_account_id)
+                provider.stripe_onboarding_complete = bool(
+                    getattr(account, "charges_enabled", False) and getattr(account, "payouts_enabled", False)
+                )
+                db.commit()
+                db.refresh(provider)
+            except Exception as e:
+                print(f"Warning: Failed to refresh Stripe account status for provider {provider.id}: {e}")
+
+            if not provider.stripe_onboarding_complete:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Provider payouts are not yet enabled in Stripe. Please complete onboarding first."
+                )
+
+            # Determine payout amount: booking amount minus 10% platform fee
+            payment = booking.payment
+            if not payment:
+                payment = db.query(models.Payment).filter(models.Payment.booking_id == booking.id).first()
+
+            if not payment:
+                raise HTTPException(status_code=400, detail="No payment record found for this booking.")
+
+            try:
+                gross_amount = float(payment.amount.replace("$", "").replace(",", "").strip())
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Invalid payment amount format: {payment.amount}")
+
+            gross_cents = int(round(gross_amount * 100))
+            provider_cents = int(round(gross_cents * 0.9))  # 10% platform fee
+            currency = (payment.currency or "usd").lower()
+
+            if not booking.stripe_charge_id:
+                # Fallback to payment's charge id if present
+                if payment.stripe_charge_id:
+                    booking.stripe_charge_id = payment.stripe_charge_id
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Missing Stripe charge ID for payout. Cannot transfer funds to provider."
+                    )
+
+            try:
+                transfer = stripe.Transfer.create(
+                    amount=provider_cents,
+                    currency=currency,
+                    destination=provider.stripe_account_id,
+                    source_transaction=booking.stripe_charge_id,
+                    metadata={
+                        "booking_id": booking.id,
+                        "provider_id": provider.id,
+                        "customer_id": booking.customer_id,
+                    },
+                )
+
+                booking.payment_status = "RELEASED_TO_PROVIDER"
+                booking.stripe_transfer_id = transfer.id
+            except stripe.error.StripeError as e:
+                raise HTTPException(status_code=400, detail=f"Stripe transfer error: {str(e)}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to create payout transfer: {str(e)}")
+
     db.commit()
     db.refresh(booking)
     
@@ -715,10 +979,6 @@ async def update_booking_status(
             booking_date_local
         )
     elif status_update.status == "cancelled":
-        # Note: Standby request will be created only when customer opts-in
-        # Don't create automatically - let customer decide
-        pass
-        
         background_tasks.add_task(
             notifications.notify_booking_cancelled,
             customer.email,
@@ -910,8 +1170,10 @@ async def create_bulk_time_slots(
             current_time = start_time
             while current_time < end_time:
                 # Create datetime for this slot
-                slot_datetime = datetime.combine(current_date, current_time)
-                slot_datetime = ZoneInfo(provider_tz).localize(slot_datetime) if provider_tz != "UTC" else slot_datetime.replace(tzinfo=ZoneInfo("UTC"))
+                # Build an aware datetime in the provider's timezone.
+                # NOTE: `zoneinfo.ZoneInfo` does not support `.localize()` (that's a pytz API).
+                # Using replace(tzinfo=...) is sufficient here (Pakistan has no DST edge cases).
+                slot_datetime = datetime.combine(current_date, current_time).replace(tzinfo=ZoneInfo(provider_tz))
                 
                 # Check if slot already exists
                 existing = db.query(models.TimeSlot).filter(
@@ -1085,7 +1347,9 @@ async def get_provider_dashboard(current_provider: models.ServiceProvider = Depe
             "profile_picture": current_provider.profile_picture,
             "profile_photo": current_provider.profile_photo,
             "level": current_provider.level or "beginner",
-            "level_info": level_info
+            "level_info": level_info,
+            "stripe_account_id": getattr(current_provider, "stripe_account_id", None),
+            "stripe_onboarding_complete": getattr(current_provider, "stripe_onboarding_complete", False),
         },
         "services": services,
         "bookings": bookings,
@@ -1168,6 +1432,56 @@ async def update_provider_profile_photo(request: dict, current_provider: models.
     db.commit()
     db.refresh(current_provider)
     return {"message": "Profile photo updated", "profile_photo": current_provider.profile_photo}
+
+
+@app.post("/provider/stripe/account-link")
+async def create_stripe_account_link(
+    current_provider: models.ServiceProvider = Depends(get_current_provider),
+    db: Session = Depends(database.get_db),
+):
+    """
+    Create a Stripe AccountLink for provider payouts onboarding.
+    Redirect the provider to this URL on the frontend.
+    """
+    if not stripe:
+        raise HTTPException(status_code=503, detail="Stripe payment integration is not available")
+
+    # Ensure provider has a connected account
+    if not current_provider.stripe_account_id:
+        try:
+            connect_country = os.getenv("STRIPE_CONNECT_COUNTRY", "US")
+            account = stripe.Account.create(
+                type="express",
+                country=connect_country,
+                email=current_provider.email,
+                capabilities={
+                    "card_payments": {"requested": True},
+                    "transfers": {"requested": True},
+                },
+                business_type="individual",
+            )
+            current_provider.stripe_account_id = account.id
+            current_provider.stripe_onboarding_complete = False
+            db.commit()
+            db.refresh(current_provider)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create Stripe connected account: {str(e)}")
+
+    try:
+        refresh_url = os.getenv("STRIPE_ONBOARDING_REFRESH_URL", "http://localhost:3000/dashboard")
+        return_url = os.getenv("STRIPE_ONBOARDING_RETURN_URL", "http://localhost:3000/dashboard")
+
+        link = stripe.AccountLink.create(
+            account=current_provider.stripe_account_id,
+            refresh_url=refresh_url,
+            return_url=return_url,
+            type="account_onboarding",
+        )
+        return {"url": link.url}
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Stripe error while creating account link: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create Stripe account link: {str(e)}")
 
 @app.post("/provider/change-password")
 async def change_provider_password(request: dict, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
@@ -1538,7 +1852,11 @@ async def create_booking(
         booking_date=booking_date,
         end_date=end_date,
         status="pending",  # Always starts as pending
-        notes=booking.notes
+        notes=booking.notes,
+        # Track original / assigned provider for standby workflows
+        original_provider_id=service.provider_id,
+        assigned_provider_id=service.provider_id,
+        booking_status="pending",
     )
     db.add(new_booking)
     db.commit()
@@ -1611,9 +1929,12 @@ async def get_customer_bookings(current_customer: models.Customer = Depends(get_
                     "booking_date_local": booking_date_local_str,
                     "timezone": provider_tz,
                     "status": booking.status,
+                    "booking_status": getattr(booking, "booking_status", None),
                     "notes": booking.notes,
                     "created_at": booking.created_at.isoformat() if booking.created_at else None,
-                    "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "unpaid",
+                    "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "UNPAID",
+                    "original_provider_id": getattr(booking, "original_provider_id", None),
+                    "assigned_provider_id": getattr(booking, "assigned_provider_id", None),
                 })
             except Exception as e:
                 # Log error but continue processing other bookings
@@ -1744,6 +2065,8 @@ async def create_payment_intent(
     
     try:
         # Create Stripe Payment Intent
+        # NOTE: No transfer_data here – funds are captured to the platform
+        # account and later paid out via a separate transfer (escrow-style).
         intent = stripe.PaymentIntent.create(
             amount=amount_cents,
             currency="usd",
@@ -1773,9 +2096,9 @@ async def create_payment_intent(
             )
             db.add(payment)
         
-        # Update booking payment status
-        booking.payment_status = "pending"
+        # Link payment + intent to booking (escrow)
         booking.payment_id = payment.id
+        booking.stripe_payment_intent_id = intent.id
         
         db.commit()
         db.refresh(payment)
@@ -1826,12 +2149,17 @@ async def confirm_payment(
         if intent.status == "succeeded":
             # Update payment record
             payment.status = "succeeded"
-            payment.stripe_charge_id = intent.latest_charge if hasattr(intent, 'latest_charge') else None
+            payment.stripe_charge_id = getattr(intent, "latest_charge", None)
             payment.paid_at = datetime.now(ZoneInfo("UTC"))
             
-            # Update booking - set status to "confirmed" and payment to "paid"
+            # Persist core Stripe IDs on booking for escrow / payouts / refunds
+            booking.stripe_payment_intent_id = intent.id
+            booking.stripe_charge_id = getattr(intent, "latest_charge", None)
+
+            # Update booking - set status to "confirmed" and payment to held-in-escrow
             booking.status = "confirmed"  # Booking becomes confirmed after payment
-            booking.payment_status = "paid"
+            booking.booking_status = "confirmed"
+            booking.payment_status = "HELD_IN_ESCROW"
             booking.payment_id = payment.id
             
             # Create Google Calendar event if provider has calendar integration
@@ -2038,7 +2366,10 @@ async def stripe_webhook(request: Request):
                     booking = db.query(models.Booking).filter(models.Booking.id == payment.booking_id).first()
                     if booking:
                         booking.status = "confirmed"  # Set to confirmed when payment succeeds
-                        booking.payment_status = "paid"
+                        booking.booking_status = "confirmed"
+                        booking.payment_status = "HELD_IN_ESCROW"
+                        booking.stripe_payment_intent_id = payment_intent_id
+                        booking.stripe_charge_id = payment.stripe_charge_id or booking.stripe_charge_id
                     
                     db.commit()
             except Exception as e:
@@ -2048,6 +2379,7 @@ async def stripe_webhook(request: Request):
                 db.close()
     
     return {"status": "success"}
+
 
 # Import RAG routes (optional - gracefully handle if not available)
 try:
@@ -2064,14 +2396,6 @@ try:
     print("✅ Rating system module loaded")
 except ImportError as e:
     print(f"⚠️ Rating module not available: {e}")
-
-# Import Standby routes
-try:
-    from standby.routes import router as standby_router
-    app.include_router(standby_router)
-    print("✅ Standby support module loaded")
-except ImportError as e:
-    print(f"⚠️ Standby module not available: {e}")
 
 # Fallback list of major Pakistan cities (in case API fails)
 PAKISTAN_CITIES_FALLBACK = [

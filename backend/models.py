@@ -61,11 +61,21 @@ class ServiceProvider(Base):
     
     # Provider Level (based on ratings)
     level = Column(String, default="beginner")  # beginner, skilled, expert
+
+    # Stripe Connect (payouts)
+    stripe_account_id = Column(String, nullable=True)  # Connected account ID (acct_xxx)
+    stripe_onboarding_complete = Column(Boolean, default=False)  # Bank/payout details completed
     
     # Relationships
     portfolio_items = relationship("PortfolioItem", back_populates="provider", cascade="all, delete-orphan")
     services = relationship("Service", back_populates="provider", cascade="all, delete-orphan")
-    bookings = relationship("Booking", back_populates="provider", cascade="all, delete-orphan")
+    # Use provider_id as the primary FK linking bookings to this provider
+    bookings = relationship(
+        "Booking",
+        back_populates="provider",
+        cascade="all, delete-orphan",
+        foreign_keys="Booking.provider_id",
+    )
     payments = relationship("Payment", back_populates="provider", foreign_keys="Payment.provider_id")
 
 
@@ -126,6 +136,9 @@ class Booking(Base):
     booking_date = Column(DateTime(timezone=True), nullable=False)  # Kept for backward compatibility
     end_date = Column(DateTime(timezone=True), nullable=True)  # Calculated from service duration
     status = Column(String, default="pending")  # pending, confirmed, completed, cancelled, rejected
+
+    # Optional duplicated status field for richer workflows
+    booking_status = Column(String, nullable=True)  # Mirrors/extends status when using advanced flows
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -135,12 +148,41 @@ class Booking(Base):
     # Notification tracking
     reminder_sent = Column(Boolean, default=False)
     
-    # Payment Integration
-    payment_status = Column(String, default="unpaid")  # unpaid, pending, paid, refunded, failed
+    # Payment Integration (card capture + escrow + payouts)
+    payment_status = Column(
+        String,
+        default="UNPAID"
+    )  # UNPAID, HELD_IN_ESCROW, RELEASED_TO_PROVIDER, REFUNDED, FAILED
     payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True)  # Reference to payment
-    
+
+    # Stripe identifiers (stored on booking for escrow / payouts / refunds)
+    stripe_payment_intent_id = Column(String, nullable=True, index=True)
+    stripe_charge_id = Column(String, nullable=True, index=True)
+    stripe_transfer_id = Column(String, nullable=True, index=True)
+    stripe_refund_id = Column(String, nullable=True, index=True)
+
+    # Provider assignment tracking (original/assigned provider)
+    original_provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=True)
+    assigned_provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=True)
+
     customer = relationship("Customer")
-    provider = relationship("ServiceProvider", back_populates="bookings")
+    provider = relationship(
+        "ServiceProvider",
+        back_populates="bookings",
+        foreign_keys=[provider_id],
+    )
+
+    # Relationships for advanced provider assignment
+    original_provider = relationship(
+        "ServiceProvider",
+        foreign_keys=[original_provider_id],
+        lazy="joined",
+    )
+    assigned_provider = relationship(
+        "ServiceProvider",
+        foreign_keys=[assigned_provider_id],
+        lazy="joined",
+    )
     service = relationship("Service", back_populates="bookings")
     time_slot = relationship("TimeSlot", back_populates="booking")
     payment = relationship("Payment", back_populates="booking", uselist=False, foreign_keys="[Payment.booking_id]", primaryjoin="Booking.id == Payment.booking_id")
@@ -194,56 +236,5 @@ class Payment(Base):
 
 
 # Standby Support System Models
-class StandbyQueue(Base):
-    """Standby queue for service providers with free slots"""
-    __tablename__ = "standby_queue"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=False)
-    service_id = Column(Integer, ForeignKey("services.id"), nullable=True)  # Optional: specific service
-    slot_date = Column(DateTime(timezone=True), nullable=False)  # Date/time of free slot
-    slot_start_time = Column(Time, nullable=True)  # Start time of slot
-    slot_end_time = Column(Time, nullable=True)  # End time of slot
-    added_at = Column(DateTime(timezone=True), server_default=func.now())
-    expires_at = Column(DateTime(timezone=True), nullable=False)  # 5 days from added_at
-    is_active = Column(Boolean, default=True)  # Active in queue
-    notified_provider = Column(Boolean, default=False)  # Whether provider was notified
-    
-    provider = relationship("ServiceProvider")
-    service = relationship("Service")
-
-
-class StandbyNotification(Base):
-    """Notifications for providers about being added to standby"""
-    __tablename__ = "standby_notifications"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=False)
-    standby_queue_id = Column(Integer, ForeignKey("standby_queue.id"), nullable=True)
-    message = Column(Text, nullable=False)
-    days_shown = Column(Integer, default=5)  # Days to show (up to 5)
-    shown_until = Column(DateTime(timezone=True), nullable=False)  # When to stop showing
-    is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    provider = relationship("ServiceProvider")
-
-
-class StandbyRequest(Base):
-    """Customer requests for standby support after booking cancellation"""
-    __tablename__ = "standby_requests"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    cancelled_booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False)
-    original_booking_date = Column(DateTime(timezone=True), nullable=False)
-    original_service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
-    status = Column(String, default="pending")  # pending, matched, completed, expired
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    matched_provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=True)
-    matched_at = Column(DateTime(timezone=True), nullable=True)
-    
-    customer = relationship("Customer")
-    cancelled_booking = relationship("Booking", foreign_keys=[cancelled_booking_id])
-    original_service = relationship("Service", foreign_keys=[original_service_id])
-    matched_provider = relationship("ServiceProvider", foreign_keys=[matched_provider_id])
+# NOTE: Standby support models (StandbyQueue, StandbyNotification, StandbyRequest)
+# have been removed to disable the standby feature and its tables.

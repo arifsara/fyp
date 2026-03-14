@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Calendar, DollarSign, Image as ImageIcon, Briefcase, Clock, User, CheckCircle, XCircle, AlertCircle, Edit, Save, X, Camera } from "lucide-react";
 import Link from "next/link";
 import ProviderLevelBadge from "@/components/rating/ProviderLevelBadge";
-import ProviderStandbyNotification from "@/components/standby/ProviderStandbyNotification";
 
 interface Service {
   id: number;
@@ -67,6 +66,8 @@ interface DashboardData {
       color: string;
       icon: string;
     };
+    stripe_account_id?: string | null;
+    stripe_onboarding_complete?: boolean;
   };
   customer?: {
     id: number;
@@ -98,6 +99,8 @@ export default function DashboardPage() {
   const [editingBio, setEditingBio] = useState(false);
   const [bioText, setBioText] = useState("");
   const [savingBio, setSavingBio] = useState(false);
+  const [payoutSetupLoading, setPayoutSetupLoading] = useState(false);
+  const [payoutSetupUrl, setPayoutSetupUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const currentRole = localStorage.getItem("role");
@@ -111,6 +114,29 @@ export default function DashboardPage() {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
     };
+  };
+
+  const handleCreatePayoutLink = async () => {
+    setPayoutSetupLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/provider/stripe/account-link", {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Failed to create Stripe payout link");
+      }
+      const data = await res.json();
+      if (data.url) {
+        setPayoutSetupUrl(data.url);
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to start payout setup");
+    } finally {
+      setPayoutSetupLoading(false);
+    }
   };
 
   const fetchDashboardData = async () => {
@@ -390,9 +416,6 @@ export default function DashboardPage() {
   // Provider Dashboard
   return (
     <div className="space-y-8">
-      {/* Standby Notification */}
-      <ProviderStandbyNotification />
-      
       {/* Welcome Section */}
       <div className="flex items-center gap-6">
         <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -425,6 +448,23 @@ export default function DashboardPage() {
             )}
           </div>
           <p className="text-muted-foreground">{dashboardData.provider?.business_name}</p>
+          {/* Stripe payouts setup */}
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+            {dashboardData.provider?.stripe_onboarding_complete ? (
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
+                Payouts enabled with Stripe
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCreatePayoutLink}
+                disabled={payoutSetupLoading}
+              >
+                {payoutSetupLoading ? "Redirecting to Stripe..." : "Setup Payouts"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

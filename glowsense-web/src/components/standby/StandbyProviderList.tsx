@@ -1,9 +1,5 @@
-"use client";
-
-// This component is imported by CustomerStandbyModal
-// The list is already rendered in the modal, but this can be used standalone if needed
-
+// Standby provider list component removed.
 export default function StandbyProviderList() {
-  return null; // Implementation is in CustomerStandbyModal
+  return null;
 }
 

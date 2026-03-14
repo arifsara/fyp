@@ -24,9 +24,12 @@ interface Transaction {
     id: number;
     business_name: string;
   };
+  stripe_payment_intent_id?: string;
 }
 
-export default function PaymentPage() {
+import { Suspense } from "react";
+
+function PaymentPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookingId = searchParams.get("bookingId");
@@ -272,3 +275,15 @@ export default function PaymentPage() {
   );
 }
 
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-muted-foreground">Loading...</span>
+      </div>
+    }>
+      <PaymentPageContent />
+    </Suspense>
+  );
+}

@@ -34,6 +34,7 @@ interface Payment {
   payment_method?: string;
   created_at: string;
   paid_at?: string;
+  stripe_payment_intent_id?: string;
   service?: {
     id: number;
     name: string;
@@ -221,10 +222,12 @@ export default function BookingsPage() {
                   {booking.payment_status && (
                     <div className="mt-2">
                       <span className={`text-xs px-2 py-1 rounded-full ${
-                        booking.payment_status === "paid" 
+                        booking.payment_status === "RELEASED_TO_PROVIDER" 
                           ? "bg-green-100 text-green-700" 
-                          : booking.payment_status === "pending"
+                          : booking.payment_status === "HELD_IN_ESCROW"
                           ? "bg-yellow-100 text-yellow-700"
+                          : booking.payment_status === "REFUNDED"
+                          ? "bg-red-100 text-red-700"
                           : "bg-gray-100 text-gray-700"
                       }`}>
                         Payment: {booking.payment_status}

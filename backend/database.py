@@ -21,7 +21,8 @@ engine = create_engine(
     echo=False,  # Set to True for SQL query logging (useful for debugging)
     connect_args={
         "connect_timeout": 5,  # 5 second timeout for connection attempts
-        "options": "-c statement_timeout=5000"  # 5 second timeout for queries
+        # Force session timezone + keep 5s statement timeout
+        "options": "-c TimeZone=Asia/Karachi -c statement_timeout=5000"
     }
 )
 

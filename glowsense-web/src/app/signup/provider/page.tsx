@@ -1,16 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Briefcase, Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import SignupLocation from "@/components/signup/SignupLocation";
+import { GoogleAuthButton } from "@/components/GOOGLE AUTH/GoogleAuthButton";
+import { useSession } from "next-auth/react";
 
 export default function ProviderSignupPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({ 
@@ -19,6 +22,8 @@ export default function ProviderSignupPage() {
   });
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [emailLocked, setEmailLocked] = useState(false);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
@@ -27,6 +32,76 @@ export default function ProviderSignupPage() {
   const handleLocationChange = useCallback((location: string) => {
     setFormData((prev) => ({ ...prev, city: location }));
   }, []);
+
+  useEffect(() => {
+    // Handle redirect from Google. If the user already exists in the backend, we should automatically authenticate them.
+    const handleGoogleSignupAuth = async () => {
+      if (status === "authenticated" && session && (session as any).id_token) {
+        
+        // Let's attempt to use it specifically as a login intent first just in case they're already registered
+        try {
+          const res = await fetch("http://localhost:8000/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id_token: (session as any).id_token,
+              role: "provider",
+              intent: "signup",  // intent "signup" returns `already_registered` boolean
+            }),
+          });
+          
+          if (res.ok) {
+             const data = await res.json();
+             
+             // If already registered, seamlessly log them in and redirect to dashboard
+             if (data.already_registered) {
+                // To get the token we need to re-ping with login intent
+                const loginRes = await fetch("http://localhost:8000/auth/google", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    id_token: (session as any).id_token,
+                    role: "provider",
+                    intent: "login",
+                  }),
+                });
+                
+                if (loginRes.ok) {
+                   const loginData = await loginRes.json();
+                   if (loginData.access_token) {
+                     localStorage.setItem("token", loginData.access_token);
+                     localStorage.setItem("role", "provider");
+                     router.push("/dashboard/portfolio");
+                     return;
+                   }
+                }
+             }
+          }
+        } catch(e) { /* ignore and fallback to normal prefills */ }
+
+        // If not registered, just prefill email/name
+        setFormData((prev) => ({
+          ...prev,
+          email: session.user?.email || "",
+          name: session.user?.name || prev.name,
+        }));
+        setEmailLocked(true);
+      }
+    };
+    
+    handleGoogleSignupAuth();
+
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const emailStr = params.get("email");
+    const from = params.get("from");
+    const nameStr = params.get("name");
+    if (emailStr && from === "google") {
+      setFormData((prev) => ({ ...prev, email: emailStr, name: nameStr || prev.name }));
+      setEmailLocked(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session, router]);
 
   const handleFileUpload = async (file: File, type: "certificate" | "license") => {
     try {
@@ -210,23 +285,30 @@ export default function ProviderSignupPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" required onChange={handleChange} />
+                <Input id="name" value={formData.name} required onChange={handleChange} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="businessName">Business Name</Label>
-                <Input id="businessName" placeholder="e.g. Sarah's Salon" required onChange={handleChange} />
+                <Input id="businessName" value={formData.businessName} placeholder="e.g. Sarah's Salon" required onChange={handleChange} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" required onChange={handleChange} />
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                disabled={emailLocked}
+                onChange={handleChange}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" type="tel" required onChange={handleChange} />
+                <Input id="phone" type="tel" value={formData.phone} required onChange={handleChange} />
               </div>
               <div className="col-span-2">
                 <SignupLocation
@@ -243,6 +325,7 @@ export default function ProviderSignupPage() {
                 id="bio"
                 className="flex min-h-[80px] w-full rounded-xl border border-input bg-input px-3 py-2 text-sm"
                 placeholder="Tell us about your expertise..."
+                value={formData.bio}
                 onChange={handleChange}
               />
             </div>
@@ -250,7 +333,7 @@ export default function ProviderSignupPage() {
             {/* CNIC/ID */}
             <div className="space-y-2">
               <Label htmlFor="cnicId">CNIC / ID Number</Label>
-              <Input id="cnicId" placeholder="e.g. 12345-1234567-1" onChange={handleChange} />
+              <Input id="cnicId" value={formData.cnicId} placeholder="e.g. 12345-1234567-1" onChange={handleChange} />
             </div>
 
             {/* Certificates */}
@@ -276,6 +359,7 @@ export default function ProviderSignupPage() {
               )}
               <Input 
                 id="certificates" 
+                value={formData.certificates}
                 placeholder="Or enter certifications text (e.g. Certified Esthetician, 5 years experience)"
                 onChange={handleChange}
               />
@@ -304,6 +388,7 @@ export default function ProviderSignupPage() {
               )}
               <Input 
                 id="businessLicense" 
+                value={formData.businessLicense}
                 placeholder="Or enter license number"
                 onChange={handleChange}
               />
@@ -312,11 +397,11 @@ export default function ProviderSignupPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required onChange={handleChange} />
+                <Input id="password" type="password" value={formData.password} required onChange={handleChange} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input id="confirmPassword" type="password" required onChange={handleChange} />
+                <Input id="confirmPassword" type="password" value={formData.confirmPassword} required onChange={handleChange} />
               </div>
             </div>
 
@@ -324,6 +409,14 @@ export default function ProviderSignupPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Sign Up as Expert"}
             </Button>
           </form>
+
+          <div className="mt-4">
+            <GoogleAuthButton
+              role="provider"
+              intent="signup"
+              text="Continue with Google"
+            />
+          </div>
 
           <div className="text-center space-y-2">
             <p className="text-sm text-muted-foreground">

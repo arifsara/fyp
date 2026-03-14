@@ -108,8 +108,9 @@ export default function SignupLocation({
             onLocationChange(value);
           }}
           required={required}
+          disabled={loading}
         >
-          <SelectTrigger id="city" disabled={loading}>
+          <SelectTrigger id="city">
             <SelectValue placeholder={loading ? "Loading cities..." : "Select your city"} />
           </SelectTrigger>
           <SelectContent>
