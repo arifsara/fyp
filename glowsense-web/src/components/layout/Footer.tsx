@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { Sparkles, Instagram, Twitter, Facebook } from "lucide-react";
 
+import { usePathname } from "next/navigation";
+
 export function Footer() {
+  const pathname = usePathname();
+
+  const shouldHide = pathname === "/dashboard/ai-assistant";
+  if (shouldHide) return null;
+
   return (
     <footer className="bg-white border-t">
       <div className="container mx-auto px-4 py-12 md:px-6">
@@ -55,7 +62,7 @@ export function Footer() {
             </div>
           </div>
         </div>
-        
+
         <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
           © {new Date().getFullYear()} GlowSense AI. All rights reserved.
         </div>

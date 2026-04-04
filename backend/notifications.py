@@ -15,19 +15,7 @@ def send_email_notification(
     body: str,
     html_body: Optional[str] = None
 ) -> bool:
-    """
-    Send email notification (mock implementation).
-    In production, integrate with SendGrid, AWS SES, or similar.
     
-    Args:
-        to_email: Recipient email
-        subject: Email subject
-        body: Plain text body
-        html_body: HTML body (optional)
-    
-    Returns:
-        True if sent successfully
-    """
     logger.info(f"📧 Email sent to {to_email}")
     logger.info(f"Subject: {subject}")
     logger.info(f"Body: {body}")
@@ -39,17 +27,7 @@ def send_sms_notification(
     to_phone: str,
     message: str
 ) -> bool:
-    """
-    Send SMS notification (mock implementation).
-    In production, integrate with Twilio, AWS SNS, or similar.
-    
-    Args:
-        to_phone: Recipient phone number
-        message: SMS message
-    
-    Returns:
-        True if sent successfully
-    """
+   
     logger.info(f"📱 SMS sent to {to_phone}")
     logger.info(f"Message: {message}")
     # TODO: Integrate with actual SMS service

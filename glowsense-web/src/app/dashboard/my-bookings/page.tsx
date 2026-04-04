@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, User, DollarSign, CheckCircle, XCircle, AlertCircle, MapPin, CreditCard, Star } from "lucide-react";
+import { Calendar, Clock, User, DollarSign, CheckCircle, XCircle, AlertCircle, MapPin, CreditCard, Star, UserCheck, ArrowUpRight } from "lucide-react";
 import PaymentModal from "@/components/payment/PaymentModal";
 import RatingModal from "@/components/rating/RatingModal";
+import StandbyModal from "@/components/standby/StandbyModal";
+import DifferencePaymentModal from "@/components/payment/DifferencePaymentModal";
 
 interface Booking {
   id: number;
@@ -24,17 +26,24 @@ interface Booking {
   notes?: string;
   created_at: string;
   payment_status?: string;
+  paid_amount?: string;
+  refunded_amount?: string;
 }
 
 export default function MyBookingsPage() {
   const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "confirmed" | "completed" | "cancelled">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "confirmed" | "completed" | "cancelled" | "cancelled_by_provider" | "standby_pending" | "awaiting_extra_payment">("all");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [ratingStatus, setRatingStatus] = useState<Record<number, { isRated: boolean; canRate: boolean }>>({});
+  const [showStandbyModal, setShowStandbyModal] = useState(false);
+  const [standbyProviders, setStandbyProviders] = useState<Array<{id:number;full_name:string;business_name:string|null;city:string|null;level:string;average_rating:number}>>([]);
+  const [standbyBookingId, setStandbyBookingId] = useState<number | null>(null);
+  const [showDiffPaymentModal, setShowDiffPaymentModal] = useState(false);
+  const [diffPaymentBooking, setDiffPaymentBooking] = useState<Booking | null>(null);
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -153,6 +162,44 @@ export default function MyBookingsPage() {
     }
   };
 
+  const openStandbyModal = async (bookingId: number) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:8000/standby/providers/${bookingId}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStandbyProviders(data.standby_providers || []);
+        setStandbyBookingId(bookingId);
+        setShowStandbyModal(true);
+      } else {
+        alert("Failed to load standby providers");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred");
+    }
+  };
+
+  const cancelBooking = async (bookingId: number) => {
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
+    try {
+      const res = await fetch(`http://localhost:8000/customer/bookings/${bookingId}/cancel`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to cancel booking");
+      }
+      fetchBookings();
+    } catch (err: any) {
+      console.error("Failed to cancel booking", err);
+      alert(err.message || "Failed to cancel booking");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "confirmed":
@@ -164,6 +211,15 @@ export default function MyBookingsPage() {
       case "cancelled":
       case "rejected":
         return "bg-red-100 text-red-700";
+      case "cancelled_by_provider":
+        return "bg-orange-100 text-orange-700";
+      case "standby_selected":
+      case "standby_pending":
+        return "bg-indigo-100 text-indigo-700";
+      case "refunded":
+        return "bg-emerald-100 text-emerald-700";
+      case "awaiting_extra_payment":
+        return "bg-amber-100 text-amber-700";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -180,6 +236,15 @@ export default function MyBookingsPage() {
       case "cancelled":
       case "rejected":
         return <XCircle className="h-4 w-4" />;
+      case "cancelled_by_provider":
+        return <AlertCircle className="h-4 w-4" />;
+      case "standby_selected":
+      case "standby_pending":
+        return <UserCheck className="h-4 w-4" />;
+      case "refunded":
+        return <DollarSign className="h-4 w-4" />;
+      case "awaiting_extra_payment":
+        return <ArrowUpRight className="h-4 w-4" />;
       default:
         return <AlertCircle className="h-4 w-4" />;
     }
@@ -209,7 +274,7 @@ export default function MyBookingsPage() {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 border-b border-border">
-        {(["all", "pending", "accepted", "confirmed", "completed", "cancelled"] as const).map((status) => (
+        {(["all", "pending", "accepted", "confirmed", "completed", "cancelled", "cancelled_by_provider", "standby_pending", "awaiting_extra_payment"] as const).map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
@@ -265,7 +330,7 @@ export default function MyBookingsPage() {
                     <p className="text-sm text-muted-foreground mt-2">Notes: {booking.notes}</p>
                   )}
                   {booking.payment_status && (
-                    <div className="mt-2">
+                    <div className="mt-2 space-y-1">
                       <span className={`text-xs px-2 py-1 rounded-full ${
                     booking.payment_status === "RELEASED_TO_PROVIDER" 
                           ? "bg-green-100 text-green-700" 
@@ -277,24 +342,141 @@ export default function MyBookingsPage() {
                       }`}>
                         Payment: {booking.payment_status}
                       </span>
+                      {booking.paid_amount && (
+                        <p className="text-xs text-muted-foreground">
+                          💰 Paid: <span className="font-medium text-foreground">${parseFloat(booking.paid_amount).toFixed(2)}</span>
+                        </p>
+                      )}
+                      {booking.refunded_amount && parseFloat(booking.refunded_amount) > 0 && (
+                        <p className="text-xs text-emerald-600">
+                          ↩️ Refunded: <span className="font-medium">${parseFloat(booking.refunded_amount).toFixed(2)}</span>
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Payment Button */}
-              {booking.payment_status !== "paid" && booking.status === "accepted" && (
+              {/* Pending / Accepted Actions */}
+              {booking.status === "pending" && (
                 <div className="pt-4 border-t border-border">
+                  <Button
+                    onClick={() => cancelBooking(booking.id)}
+                    variant="outline"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    size="sm"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel Booking
+                  </Button>
+                </div>
+              )}
+              {booking.payment_status !== "paid" && booking.status === "accepted" && (
+                <div className="pt-4 border-t border-border flex gap-2">
                   <Button
                     onClick={() => {
                       setSelectedBooking(booking);
                       setShowPaymentModal(true);
                     }}
-                    className="w-full"
+                    className="flex-1"
                     size="sm"
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Pay Now
+                  </Button>
+                  <Button
+                    onClick={() => cancelBooking(booking.id)}
+                    variant="outline"
+                    className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    size="sm"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              {booking.status === "confirmed" && (
+                <div className="pt-4 border-t border-border">
+                  <Button
+                    onClick={() => cancelBooking(booking.id)}
+                    variant="outline"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    size="sm"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel Booking (Refundable)
+                  </Button>
+                </div>
+              )}
+
+              {/* Standby Pending Info */}
+              {booking.status === "standby_pending" && (
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 bg-indigo-50 px-4 py-3 rounded-lg mb-3">
+                    <UserCheck className="h-5 w-5 text-indigo-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-indigo-800">Waiting for standby provider to accept</p>
+                      <p className="text-xs text-indigo-600 mt-0.5">Once they accept, you'll be able to pay their service price.</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => cancelBooking(booking.id)}
+                    variant="outline"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    size="sm"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel Booking
+                  </Button>
+                </div>
+              )}
+
+              {/* Awaiting Extra Payment */}
+              {booking.status === "awaiting_extra_payment" && (
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 bg-amber-50 px-4 py-3 rounded-lg mb-3">
+                    <ArrowUpRight className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Additional Payment Required</p>
+                      <p className="text-xs text-amber-600 mt-0.5">The standby provider's rate is higher. Pay the difference to confirm.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => {
+                        setDiffPaymentBooking(booking);
+                        setShowDiffPaymentModal(true);
+                      }}
+                      className="flex-1 bg-amber-600 hover:bg-amber-700"
+                      size="sm"
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Pay Difference
+                    </Button>
+                    <Button
+                      onClick={() => cancelBooking(booking.id)}
+                      variant="outline"
+                      className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      size="sm"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Standby Options Button */}
+              {booking.status === "cancelled_by_provider" && (
+                <div className="pt-4 border-t border-border">
+                  <Button
+                    onClick={() => openStandbyModal(booking.id)}
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    size="sm"
+                  >
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    View Standby Options / Request Refund
                   </Button>
                 </div>
               )}
@@ -365,6 +547,45 @@ export default function MyBookingsPage() {
             if (selectedBooking) {
               checkRatingStatus(selectedBooking.id);
             }
+          }}
+        />
+      )}
+
+      {/* Standby Modal */}
+      {standbyBookingId && (
+        <StandbyModal
+          isOpen={showStandbyModal}
+          onClose={() => {
+            setShowStandbyModal(false);
+            setStandbyBookingId(null);
+            setStandbyProviders([]);
+          }}
+          bookingId={standbyBookingId}
+          providers={standbyProviders}
+          onSelectProvider={() => {
+            fetchBookings();
+          }}
+          onRequestRefund={() => {
+            fetchBookings();
+          }}
+        />
+      )}
+
+      {/* Difference Payment Modal */}
+      {diffPaymentBooking && (
+        <DifferencePaymentModal
+          isOpen={showDiffPaymentModal}
+          onClose={() => {
+            setShowDiffPaymentModal(false);
+            setDiffPaymentBooking(null);
+          }}
+          bookingId={diffPaymentBooking.id}
+          serviceName={diffPaymentBooking.service.name}
+          onSuccess={() => {
+            setShowDiffPaymentModal(false);
+            setDiffPaymentBooking(null);
+            fetchBookings();
+            alert("Payment confirmed! Your booking is now confirmed.");
           }}
         />
       )}

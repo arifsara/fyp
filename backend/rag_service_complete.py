@@ -163,12 +163,12 @@ Provide a clear, helpful recommendation with reasoning."""
                     sp.phone,
                     sp.profile_photo,
                     sp.profile_picture,
-                    1 - (sp.embedding <=> :query_embedding::vector) as similarity,
-                    (sp.embedding <=> :query_embedding::vector) as distance
+                    1 - (sp.embedding::vector <=> :query_embedding::vector) as similarity,
+                    (sp.embedding::vector <=> :query_embedding::vector) as distance
                 FROM service_providers sp
                 WHERE sp.embedding IS NOT NULL
                   AND sp.is_active = true
-                ORDER BY sp.embedding <=> :query_embedding::vector
+                ORDER BY sp.embedding::vector <=> :query_embedding::vector
                 LIMIT :limit
             """)
             

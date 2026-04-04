@@ -134,6 +134,22 @@ async def recommend_providers(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
+@router.get("/history/session/{session_id}")
+async def get_chat_history(session_id: int, user_id: int, db: Session = Depends(get_db)):
+    """Get previous chat history for a specific session, validated by user"""
+    try:
+        from rag.models import ChatSession
+        session = db.query(ChatSession).filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user_id
+        ).first()
+        
+        if not session or not session.session_state:
+            return {"messages": [], "session_id": None}
+            
+        return {"messages": session.session_state.get("messages", []), "session_id": session.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
 
 
 @router.post("/chat", response_model=ChatResponse)

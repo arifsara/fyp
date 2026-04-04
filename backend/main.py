@@ -93,8 +93,14 @@ app = FastAPI()
 # --- Include modular routers ---
 from ratings.routes import router as ratings_router
 from admin.routes import router as admin_router
+from standby.routes import router as standby_router
+from ai_assistant.routes import router as ai_assistant_router
+from skin_analysis.routes import router as skin_analysis_router
 app.include_router(ratings_router)
 app.include_router(admin_router)
+app.include_router(standby_router)
+app.include_router(ai_assistant_router)
+app.include_router(skin_analysis_router)
 
 # Startup event to initialize scheduler
 @app.on_event("startup")
@@ -749,8 +755,14 @@ async def delete_service(service_id: int, current_provider: models.ServiceProvid
 
 @app.get("/provider/bookings")
 async def get_provider_bookings(current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
-    """Get all bookings for the provider"""
-    bookings = db.query(models.Booking).filter(models.Booking.provider_id == current_provider.id).order_by(models.Booking.booking_date.desc()).all()
+    """Get all bookings for the provider (including ones they originally had before standby reassignment)"""
+    from sqlalchemy import or_
+    bookings = db.query(models.Booking).filter(
+        or_(
+            models.Booking.provider_id == current_provider.id,
+            models.Booking.original_provider_id == current_provider.id,
+        )
+    ).order_by(models.Booking.booking_date.desc()).all()
     
     # Include customer and service details
     result = []
@@ -798,8 +810,8 @@ async def update_booking_status(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    if status_update.status not in ["accepted", "confirmed", "rejected", "cancelled", "completed"]:
-        raise HTTPException(status_code=400, detail="Invalid status. Must be: accepted, confirmed, rejected, cancelled, or completed")
+    if status_update.status not in ["accepted", "confirmed", "rejected", "cancelled", "completed", "cancelled_by_provider", "standby_selected", "standby_pending", "awaiting_extra_payment"]:
+        raise HTTPException(status_code=400, detail="Invalid status.")
     
     old_status = booking.status
     
@@ -874,6 +886,13 @@ async def update_booking_status(
                     booking.google_calendar_event_id,
                     status="cancelled"
                 )
+    
+    # Free up time slot when booking is cancelled or rejected
+    if status_update.status in ["cancelled", "rejected", "cancelled_by_provider"] and booking.time_slot_id:
+        time_slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.time_slot_id).first()
+        if time_slot:
+            time_slot.is_available = True
+        booking.time_slot_id = None
     
     # Handle payout to provider when marking booking as completed
     if status_update.status == "completed":
@@ -1328,9 +1347,56 @@ async def get_provider_dashboard(current_provider: models.ServiceProvider = Depe
     """Get dashboard data: services, bookings, and portfolio items"""
     from services.provider_level_service import ProviderLevelService
     
-    services = db.query(models.Service).filter(models.Service.provider_id == current_provider.id, models.Service.is_active == True).all()
-    bookings = db.query(models.Booking).filter(models.Booking.provider_id == current_provider.id).order_by(models.Booking.booking_date.desc()).limit(10).all()
-    portfolio_items = db.query(models.PortfolioItem).filter(models.PortfolioItem.provider_id == current_provider.id).order_by(models.PortfolioItem.created_at.desc()).limit(6).all()
+    # Query data
+    db_services = db.query(models.Service).filter(models.Service.provider_id == current_provider.id, models.Service.is_active == True).all()
+    db_bookings = db.query(models.Booking).filter(models.Booking.provider_id == current_provider.id).order_by(models.Booking.booking_date.desc()).limit(10).all()
+    db_portfolio = db.query(models.PortfolioItem).filter(models.PortfolioItem.provider_id == current_provider.id).order_by(models.PortfolioItem.created_at.desc()).limit(6).all()
+    
+    # Manually serialize services
+    services = []
+    for s in db_services:
+        services.append({
+            "id": s.id,
+            "name": s.name,
+            "category": s.category,
+            "description": s.description,
+            "price": s.price,
+            "duration": s.duration,
+            "is_active": s.is_active
+        })
+        
+    # Manually serialize bookings
+    bookings = []
+    for b in db_bookings:
+        customer = db.query(models.Customer).filter(models.Customer.id == b.customer_id).first()
+        service = db.query(models.Service).filter(models.Service.id == b.service_id).first()
+        bookings.append({
+            "id": b.id,
+            "service_id": b.service_id,
+            "booking_date": b.booking_date.isoformat() if b.booking_date else None,
+            "status": b.status,
+            "payment_status": getattr(b, "payment_status", "UNPAID"),
+            "customer": {
+                "full_name": customer.full_name if customer else "Customer",
+                "email": customer.email if customer else ""
+            },
+            "service": {
+                "name": service.name if service else "Service",
+                "price": service.price if service else "0"
+            }
+        })
+        
+    # Manually serialize portfolio items
+    portfolio_items = []
+    for p in db_portfolio:
+        portfolio_items.append({
+            "id": p.id,
+            "title": p.title,
+            "description": p.description,
+            "image_url": p.image_url,
+            "video_url": p.video_url,
+            "created_at": p.created_at.isoformat() if p.created_at else None
+        })
     
     # Get level info
     level_info = ProviderLevelService.get_level_info(current_provider.level or "beginner")
@@ -1766,23 +1832,27 @@ async def get_available_time_slots(service_id: int, date: str, db: Session = Dep
     except:
         raise HTTPException(status_code=400, detail="Invalid date format. Use ISO format.")
     
-    # Get available time slots for this date
+    # Get available time slots for this date (must be in future and marked available)
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    
     available_slots = db.query(models.TimeSlot).filter(
         models.TimeSlot.service_id == service_id,
         models.TimeSlot.slot_date >= start_of_day_utc,
         models.TimeSlot.slot_date < end_of_day_utc,
+        models.TimeSlot.slot_date > now_utc,
         models.TimeSlot.is_available == True
     ).all()
     
     # Check which slots are already booked
-    booked_slot_ids = [
-        booking.time_slot_id for booking in db.query(models.Booking).filter(
-            models.Booking.service_id == service_id,
-            models.Booking.time_slot_id.in_([slot.id for slot in available_slots]),
-            models.Booking.status.in_(["pending", "confirmed"])
-        ).all()
-        if booking.time_slot_id
-    ]
+    booked_slot_ids = []
+    if available_slots:
+        booked_slot_ids = [
+            booking.time_slot_id for booking in db.query(models.Booking).filter(
+                models.Booking.time_slot_id.in_([slot.id for slot in available_slots]),
+                models.Booking.status.in_(["pending", "accepted", "confirmed", "standby_pending", "awaiting_extra_payment", "completed"])
+            ).all()
+            if booking.time_slot_id
+        ]
     
     # Filter out booked slots
     free_slots = [slot for slot in available_slots if slot.id not in booked_slot_ids]
@@ -1833,7 +1903,7 @@ async def create_booking(
     # Check if slot is already booked
     existing_booking = db.query(models.Booking).filter(
         models.Booking.time_slot_id == booking.time_slot_id,
-        models.Booking.status.in_(["pending", "confirmed"])
+        models.Booking.status.in_(["pending", "accepted", "confirmed", "standby_pending", "awaiting_extra_payment", "completed"])
     ).first()
     
     if existing_booking:
@@ -1913,6 +1983,23 @@ async def get_customer_bookings(current_customer: models.Customer = Depends(get_
                     print(f"Timezone conversion error for booking {booking.id}: {tz_error}")
                     booking_date_local_str = booking.booking_date.isoformat() if booking.booking_date else None
                 
+                # ── Payment details (amount paid + refund info) ──────
+                payment_record = db.query(models.Payment).filter(
+                    models.Payment.booking_id == booking.id
+                ).first()
+
+                paid_amount = None
+                refunded_amount = None
+                if payment_record:
+                    paid_amount = payment_record.amount  # string like "40.00"
+                    # If a partial refund happened, compute from the original payment
+                    if booking.stripe_refund_id and stripe:
+                        try:
+                            refund_obj = stripe.Refund.retrieve(booking.stripe_refund_id)
+                            refunded_amount = str(refund_obj.amount / 100)  # cents → dollars
+                        except Exception:
+                            pass  # won't block the listing
+
                 result.append({
                     "id": booking.id,
                     "provider": {
@@ -1935,6 +2022,8 @@ async def get_customer_bookings(current_customer: models.Customer = Depends(get_
                     "payment_status": booking.payment_status if hasattr(booking, 'payment_status') else "UNPAID",
                     "original_provider_id": getattr(booking, "original_provider_id", None),
                     "assigned_provider_id": getattr(booking, "assigned_provider_id", None),
+                    "paid_amount": paid_amount,
+                    "refunded_amount": refunded_amount,
                 })
             except Exception as e:
                 # Log error but continue processing other bookings
@@ -1971,6 +2060,13 @@ async def cancel_customer_booking(
     
     booking.status = "cancelled"
     
+    # Free up the time slot so it becomes available again
+    if booking.time_slot_id:
+        time_slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.time_slot_id).first()
+        if time_slot:
+            time_slot.is_available = True
+        booking.time_slot_id = None
+    
     # Cancel Google Calendar event if exists
     provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.id == booking.provider_id).first()
     if booking.google_calendar_event_id and provider and provider.google_calendar_access_token:
@@ -1984,7 +2080,20 @@ async def cancel_customer_booking(
                 booking.google_calendar_event_id,
                 status="cancelled"
             )
-    
+    # Handle Stripe Refund if already paid
+    if booking.payment_status == "HELD_IN_ESCROW" and booking.stripe_payment_intent_id and stripe:
+        try:
+            refund = stripe.Refund.create(payment_intent=booking.stripe_payment_intent_id)
+            booking.payment_status = "REFUNDED"
+            booking.stripe_refund_id = refund.id
+            
+            payment = db.query(models.Payment).filter(models.Payment.booking_id == booking.id).first()
+            if payment:
+                payment.status = "refunded"
+                payment.refunded_at = datetime.now(ZoneInfo("UTC"))
+        except Exception as e:
+            print(f"Warning: Failed to process refund during customer cancellation: {e}")
+
     db.commit()
     db.refresh(booking)
     

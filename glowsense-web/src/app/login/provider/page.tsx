@@ -111,6 +111,7 @@ export default function ProviderLoginPage() {
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", "provider");
+      sessionStorage.removeItem("glowsense_chat_session");
       router.push("/dashboard/portfolio");
     } catch (err: any) {
       if (err.name === "AbortError") {

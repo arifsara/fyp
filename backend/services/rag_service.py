@@ -134,11 +134,11 @@ Instructions:
                     sp.phone,
                     sp.profile_photo,
                     sp.profile_picture,
-                    1 - (sp.embedding <=> :query_embedding::vector) as similarity
+                    1 - (sp.embedding::vector <=> :query_embedding::vector) as similarity
                 FROM service_providers sp
                 WHERE sp.embedding IS NOT NULL
                   AND sp.is_active = true
-                ORDER BY sp.embedding <=> :query_embedding::vector
+                ORDER BY sp.embedding::vector <=> :query_embedding::vector
                 LIMIT :limit
             """)
             

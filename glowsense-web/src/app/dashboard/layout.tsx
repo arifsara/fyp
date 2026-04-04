@@ -11,7 +11,6 @@ import {
   User, 
   CreditCard, 
   LogOut,
-  Bell,
   Search,
   Menu,
   X as XIcon,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 const getSidebarLinks = (role: string | null) => {
   const baseLinks = [
@@ -69,6 +69,7 @@ export default function DashboardLayout({
     const currentRole = localStorage.getItem("role");
     localStorage.removeItem("token");
     localStorage.removeItem("role");
+    sessionStorage.removeItem("glowsense_chat_session");
     router.push(currentRole === "provider" ? "/login/provider" : "/login/customer");
   };
 
@@ -138,8 +139,9 @@ export default function DashboardLayout({
       )}
 
       {/* Main Content */}
-      <div className="flex-1 md:ml-0">
+      <div className={`flex-1 md:ml-0 flex flex-col ${pathname === "/dashboard/ai-assistant" ? "h-screen" : "min-h-screen"}`}>
         {/* Header */}
+        {pathname !== "/dashboard/ai-assistant" && (
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b bg-white/80 px-6 backdrop-blur-md">
           <div className="flex items-center gap-4 md:hidden">
             <button
@@ -162,18 +164,16 @@ export default function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5 text-muted-foreground" />
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
-            </Button>
+            <NotificationBell role={role} />
             <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 overflow-hidden">
               {/* User Avatar Placeholder */}
               <div className="w-full h-full flex items-center justify-center text-xs font-bold text-primary">JD</div>
             </div>
           </div>
         </header>
+        )}
 
-        <main className="p-6">
+        <main className={pathname === "/dashboard/ai-assistant" ? "flex-1 h-full w-full" : "p-6"}>
           {children}
         </main>
       </div>

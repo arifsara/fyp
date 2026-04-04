@@ -80,12 +80,17 @@ export default function ProvidersPage() {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
     
-    if (!token || role !== "customer") {
+    if (!token || (role !== "customer" && role !== "admin")) {
       router.push("/login/customer");
       return;
     }
     
     fetchProviders();
+    const urlParams = new URLSearchParams(window.location.search);
+    const providerId = urlParams.get('id');
+    if (providerId) {
+      fetchProviderDetails(parseInt(providerId));
+    }
   }, []);
 
   const fetchProviders = async () => {

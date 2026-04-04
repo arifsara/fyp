@@ -7,6 +7,7 @@ import AIChatInterface from "@/components/rag/AIChatInterface";
 export default function AIAssistantPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<number | null>(null);
+  const [userName, setUserName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +44,8 @@ export default function AIAssistantPage() {
         if (res.ok) {
           const data = await res.json();
           setUserId(data.id);
+          const name = data.full_name || data.business_name || data.name || "there";
+          setUserName(name.split(" ")[0]);
         } else {
           const errorData = await res.json().catch(() => ({ detail: "Failed to load customer profile" }));
           console.error("Failed to fetch customer profile:", res.status, errorData);
@@ -87,14 +90,8 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-12rem)]">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">AI Assistant</h1>
-        <p className="text-muted-foreground mt-2">
-          Get personalized service provider recommendations powered by AI
-        </p>
-      </div>
-      <AIChatInterface userId={userId} />
+    <div className="flex flex-col h-full w-full">
+      <AIChatInterface userId={userId} userName={userName} />
     </div>
   );
 }

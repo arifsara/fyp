@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Calendar, CheckCircle, XCircle, Clock, User, DollarSign, History, Loader2 } from "lucide-react";
+import { Calendar, CheckCircle, XCircle, Clock, User, DollarSign, History, Loader2, AlertTriangle, UserCheck } from "lucide-react";
 
 interface Booking {
   id: number;
@@ -53,7 +53,7 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "confirmed" | "completed" | "cancelled">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "confirmed" | "completed" | "cancelled" | "cancelled_by_provider" | "standby_pending">("all");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -126,6 +126,52 @@ export default function BookingsPage() {
     }
   };
 
+  const cancelWithStandby = async (bookingId: number) => {
+    if (!confirm("Are you sure you want to cancel this booking? The customer will be offered standby providers.")) return;
+    try {
+      const res = await fetch(`http://localhost:8000/standby/provider/cancel-booking/${bookingId}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to cancel booking");
+      }
+      const data = await res.json();
+      alert(`Booking cancelled. ${data.standby_providers?.length || 0} standby provider(s) found for the customer.`);
+      fetchBookings();
+      fetchPayments();
+    } catch (err: any) {
+      console.error("Failed to cancel booking", err);
+      alert(err.message || "Failed to cancel booking");
+    }
+  };
+
+  const respondToStandby = async (bookingId: number, action: "accept" | "reject") => {
+    const confirmMsg = action === "accept"
+      ? "Accept this standby booking? The customer will pay your service price."
+      : "Reject this standby booking? The customer will be able to pick another provider.";
+    if (!confirm(confirmMsg)) return;
+    try {
+      const res = await fetch("http://localhost:8000/standby/provider/respond", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ booking_id: bookingId, action }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || `Failed to ${action} booking`);
+      }
+      const data = await res.json();
+      alert(data.message);
+      fetchBookings();
+      fetchPayments();
+    } catch (err: any) {
+      console.error(`Failed to ${action} standby booking`, err);
+      alert(err.message || `Failed to ${action} booking`);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "confirmed":
@@ -139,6 +185,12 @@ export default function BookingsPage() {
       case "cancelled":
       case "rejected":
         return "bg-red-100 text-red-700";
+      case "cancelled_by_provider":
+        return "bg-orange-100 text-orange-700";
+      case "standby_pending":
+        return "bg-indigo-100 text-indigo-700";
+      case "awaiting_extra_payment":
+        return "bg-amber-100 text-amber-700";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -168,7 +220,7 @@ export default function BookingsPage() {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 border-b border-border">
-        {(["all", "pending", "accepted", "confirmed", "completed", "cancelled"] as const).map((status) => (
+        {(["all", "pending", "accepted", "confirmed", "completed", "cancelled", "cancelled_by_provider", "standby_pending"] as const).map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
@@ -268,7 +320,7 @@ export default function BookingsPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => updateBookingStatus(booking.id, "cancelled")}
+                    onClick={() => updateBookingStatus(booking.id, "cancelled_by_provider")}
                     className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
                   >
                     <XCircle className="h-4 w-4 mr-2" />
@@ -290,12 +342,39 @@ export default function BookingsPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => updateBookingStatus(booking.id, "cancelled")}
-                    className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => cancelWithStandby(booking.id)}
+                    className="flex-1 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Cancel
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                    Cancel Booking (Standby)
                   </Button>
+                </div>
+              )}
+              {booking.status === "standby_pending" && (
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 mb-3 bg-indigo-50 px-3 py-2 rounded-lg">
+                    <UserCheck className="h-4 w-4 text-indigo-600" />
+                    <p className="text-sm text-indigo-700 font-medium">Standby booking request — A customer selected you as a replacement provider</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => respondToStandby(booking.id, "accept")}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Accept Standby
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => respondToStandby(booking.id, "reject")}
+                      className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Reject
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

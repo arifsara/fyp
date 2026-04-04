@@ -111,6 +111,9 @@ export default function CustomerLoginPage() {
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", "customer");
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith("glowsense_chat_session_")) sessionStorage.removeItem(key);
+      });
       router.push("/dashboard");
     } catch (err: any) {
       if (err.name === "AbortError") {

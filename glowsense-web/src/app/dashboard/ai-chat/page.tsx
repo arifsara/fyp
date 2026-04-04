@@ -51,7 +51,7 @@ export default function AIChatPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">Smart Booking Assistant</h1>
-          <p className="text-sm text-muted-foreground">RAG-Powered Recommendations</p>
+          <p className="text-sm text-muted-foreground">AI-Powered Recommendations</p>
         </div>
       </div>
 

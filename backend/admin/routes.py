@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from database import get_db
-from models import Rating, Booking, Customer, ServiceProvider, Service
+from models import Rating, Booking, Customer, ServiceProvider, Service, Payment
 import auth
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -25,7 +25,7 @@ security = HTTPBearer()
 # =====================================================
 # Admin credentials (loaded from .env)
 # =====================================================
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@glowsense.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "adminglowsense@gmail.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123!")
 
 
@@ -64,6 +64,28 @@ class AdminRatingsOverview(BaseModel):
     total_providers: int
     total_customers: int
     ratings: List[AdminRatingItem]
+
+
+class AdminBookingItem(BaseModel):
+    id: int
+    customer_id: int
+    customer_name: Optional[str]
+    customer_email: Optional[str]
+    provider_id: int
+    provider_name: Optional[str]
+    provider_business: Optional[str]
+    provider_email: Optional[str]
+    service_id: int
+    service_name: Optional[str]
+    service_price: Optional[str]
+    time_slot_id: Optional[int]
+    slot_date: Optional[str]
+    booking_date: str
+    status: str
+    booking_status: Optional[str]
+    payment_status: str
+    original_time_slot: Optional[str] = None  # Specific for cancelled_by_provider
+    created_at: str
 
 
 # =====================================================
@@ -207,3 +229,201 @@ async def get_provider_ratings_admin(
         "total_ratings": stats.total or 0,
         "ratings": items,
     }
+
+
+@router.get("/providers")
+async def get_all_providers(
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Fetch all service providers in the system."""
+    providers = db.query(ServiceProvider).all()
+    result = []
+    for p in providers:
+        # Get count of bookings and ratings
+        bookings_count = db.query(func.count(Booking.id)).filter(Booking.provider_id == p.id).scalar() or 0
+        ratings_count = db.query(func.count(Rating.id)).filter(Rating.provider_id == p.id).scalar() or 0
+        avg_rating = db.query(func.avg(Rating.rating)).filter(Rating.provider_id == p.id).scalar() or 0
+        
+        result.append({
+            "id": p.id,
+            "full_name": p.full_name,
+            "business_name": p.business_name,
+            "email": p.email,
+            "phone": p.phone,
+            "city": p.city,
+            "is_active": p.is_active,
+            "created_at": p.created_at.isoformat(),
+            "level": p.level,
+            "bookings_count": bookings_count,
+            "ratings_count": ratings_count,
+            "average_rating": round(float(avg_rating), 2)
+        })
+    return result
+
+
+@router.get("/customers")
+async def get_all_customers(
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Fetch all customers in the system."""
+    customers = db.query(Customer).all()
+    result = []
+    for c in customers:
+        bookings_count = db.query(func.count(Booking.id)).filter(Booking.customer_id == c.id).scalar() or 0
+        result.append({
+            "id": c.id,
+            "full_name": c.full_name,
+            "email": c.email,
+            "phone": c.phone,
+            "city": c.location,
+            "is_active": c.is_active,
+            "created_at": c.created_at.isoformat(),
+            "bookings_count": bookings_count
+        })
+    return result
+
+
+@router.get("/customer/{customer_id}")
+async def get_customer_details_admin(
+    customer_id: int,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Fetch profile details for a specific customer."""
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+        
+    # Count their total bookings
+    bookings_count = db.query(Booking).filter(Booking.customer_id == customer_id).count()
+        
+    return {
+        "id": customer.id,
+        "full_name": customer.full_name,
+        "email": customer.email,
+        "phone": customer.phone,
+        "city": customer.location,
+        "bookings_count": bookings_count,
+        "created_at": customer.created_at.isoformat() if customer.created_at else None
+    }
+
+
+@router.delete("/provider/{provider_id}")
+async def delete_provider(
+    provider_id: int,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove a service provider and their associated data."""
+    provider = db.query(ServiceProvider).filter(ServiceProvider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Cascade delete-orphan should handle services, bookings, portfolio_items in SQLAlchemy
+    # But for manual FK constraints on Rating and Payment, we should clean them up if they don't cascade
+    try:
+        # Delete ratings first (they reference provider and booking)
+        db.query(Rating).filter(Rating.provider_id == provider_id).delete(synchronize_session=False)
+        
+        # Delete payments associated with this provider
+        db.query(Payment).filter(Payment.provider_id == provider_id).delete(synchronize_session=False)
+        
+        # Finally delete provider (SQLAlchemy handles cascade for services/bookings/portfolio)
+        db.delete(provider)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting provider: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting provider: {str(e)}")
+        
+    return {"message": "Provider and all associated data deleted successfully"}
+
+
+@router.get("/bookings", response_model=List[AdminBookingItem])
+async def get_all_bookings_admin(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    customer_id: Optional[int] = None,
+    provider_id: Optional[int] = None,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch all bookings in the system with full details.
+    Supports filtering by status, customer_id, provider_id and searching by name/business.
+    """
+    from sqlalchemy import or_
+    from models import TimeSlot
+    
+    query = db.query(Booking)
+    
+    # Filter by customer_id if provided
+    if customer_id:
+        query = query.filter(Booking.customer_id == customer_id)
+        
+    # Filter by provider_id if provided
+    if provider_id:
+        query = query.filter(Booking.provider_id == provider_id)
+    
+    # Filter by status (we check both status and booking_status)
+    if status:
+        query = query.filter(or_(Booking.status == status, Booking.booking_status == status))
+        
+    # Search functionality
+    if search:
+        search_filter = or_(
+            Customer.full_name.ilike(f"%{search}%"),
+            ServiceProvider.full_name.ilike(f"%{search}%"),
+            ServiceProvider.business_name.ilike(f"%{search}%"),
+            Service.name.ilike(f"%{search}%")
+        )
+        query = query.join(Customer).join(ServiceProvider).join(Service).filter(search_filter)
+
+    bookings = query.order_by(Booking.created_at.desc()).all()
+    
+    result = []
+    for b in bookings:
+        # Fetch related objects manually if not joined
+        customer = db.query(Customer).filter(Customer.id == b.customer_id).first()
+        provider = db.query(ServiceProvider).filter(ServiceProvider.id == b.provider_id).first()
+        service = db.query(Service).filter(Service.id == b.service_id).first()
+        time_slot = None
+        if b.time_slot_id:
+            time_slot = db.query(TimeSlot).filter(TimeSlot.id == b.time_slot_id).first()
+            
+        # For cancelled_by_provider, we explicitly return the original time slot
+        # In our system, time_slot.slot_date identifies the original intended time
+        original_time_slot = None
+        if b.status == "cancelled_by_provider" or b.booking_status == "cancelled_by_provider":
+            if time_slot:
+                original_time_slot = time_slot.slot_date.isoformat()
+            else:
+                original_time_slot = b.booking_date.isoformat()
+
+        result.append(
+            AdminBookingItem(
+                id=b.id,
+                customer_id=b.customer_id,
+                customer_name=customer.full_name if customer else "N/A",
+                customer_email=customer.email if customer else "N/A",
+                provider_id=b.provider_id,
+                provider_name=provider.full_name if provider else "N/A",
+                provider_business=provider.business_name if provider else "N/A",
+                provider_email=provider.email if provider else "N/A",
+                service_id=b.service_id,
+                service_name=service.name if service else "N/A",
+                service_price=service.price if service else "N/A",
+                time_slot_id=b.time_slot_id,
+                slot_date=time_slot.slot_date.isoformat() if time_slot else None,
+                booking_date=b.booking_date.isoformat(),
+                status=b.status,
+                booking_status=b.booking_status,
+                payment_status=b.payment_status or "UNPAID",
+                original_time_slot=original_time_slot,
+                created_at=b.created_at.isoformat()
+            )
+        )
+        
+    return result

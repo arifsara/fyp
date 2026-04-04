@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Time, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 from database import Base
 
 
@@ -65,6 +66,9 @@ class ServiceProvider(Base):
     # Stripe Connect (payouts)
     stripe_account_id = Column(String, nullable=True)  # Connected account ID (acct_xxx)
     stripe_onboarding_complete = Column(Boolean, default=False)  # Bank/payout details completed
+    
+    # AI Assistant / Provider Embeddings
+    embedding = Column(Vector(384), nullable=True)  # pgvector mapping -> vector(384)
     
     # Relationships
     portfolio_items = relationship("PortfolioItem", back_populates="provider", cascade="all, delete-orphan")
@@ -235,6 +239,38 @@ class Payment(Base):
     provider = relationship("ServiceProvider", back_populates="payments", foreign_keys=[provider_id])
 
 
-# Standby Support System Models
-# NOTE: Standby support models (StandbyQueue, StandbyNotification, StandbyRequest)
-# have been removed to disable the standby feature and its tables.
+class Notification(Base):
+    """General-purpose notification for customers and providers."""
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # One of customer_id or provider_id must be set
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
+    type = Column(String, nullable=False)  # booking_cancelled_by_provider, standby_added, refund_processed, standby_selected
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False)
+    data = Column(Text, nullable=True)  # JSON string for extra payload (e.g. standby provider list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    customer = relationship("Customer")
+    provider = relationship("ServiceProvider")
+
+
+class SkinAnalysis(Base):
+    """Stores AI skin analysis results for a customer (text only, no image)."""
+    __tablename__ = "skin_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    results = Column(Text, nullable=False)   # JSON string: list of {label, display, score, rank}
+    image_url = Column(String, nullable=True)  # Always None — kept for future use
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    customer = relationship("Customer")
+
+
+# Standby Support System Models - Re-enabled for provider cancellation workflow

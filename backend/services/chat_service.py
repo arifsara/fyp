@@ -13,16 +13,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rag.models import UserMessage, ChatSession
-from services.rag_service import RAGService
-from llm.ollama_client import ollama_client
+from ai_assistant.routes import get_gemini_model, embedding_model  # Our new RAG tools
+from sqlalchemy import text
 
 
 class ChatService:
-    """Service for managing chat sessions and conversations"""
+    """Service for managing chat sessions and conversations via Gemini"""
     
     def __init__(self, db: Session):
         self.db = db
-        self.rag_service = RAGService(db)
     
     def get_or_create_session(self, user_id: int, session_id: Optional[int] = None) -> ChatSession:
         """
@@ -105,9 +104,11 @@ class ChatService:
             session: ChatSession object
             state_updates: Dictionary of state updates
         """
-        current_state = session.session_state or {}
+        current_state = dict(session.session_state or {})
         current_state.update(state_updates)
         session.session_state = current_state
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(session, "session_state")
         session.updated_at = datetime.utcnow()
         self.db.commit()
     
@@ -135,90 +136,140 @@ class ChatService:
             # Store user message
             user_msg = self.store_message(user_id, message, session.id)
             
+            current_state = session.session_state or {}
+            session_messages = current_state.get("messages", [])
+            
+            # Add user message to session memory array
+            session_messages.append({
+                "role": "user",
+                "content": message,
+                "timestamp": user_msg.timestamp.isoformat()
+            })
+            
             # Get recent messages for context
             recent_messages = self.db.query(UserMessage).filter(
                 UserMessage.session_id == session.id
             ).order_by(desc(UserMessage.timestamp)).limit(10).all()
             
-            # Always use RAG for provider recommendations
-            # This ensures all queries get RAG-based service provider recommendations
-            # Check if message is asking about providers/services
-            recommendation_keywords = [
-                "recommend", "suggest", "find", "looking for", "need", 
-                "want", "search", "best", "good", "provider", "service",
-                "makeup", "hair", "stylist", "artist", "beauty", "salon",
-                "who", "where", "can you", "help me", "show me"
-            ]
-            
-            # Use RAG if it's a recommendation query OR if it's a general query (default to RAG)
-            is_recommendation_query = any(
-                keyword in message.lower() for keyword in recommendation_keywords
-            ) or len(message.split()) >= 3  # Use RAG for queries with 3+ words
-            
-            if is_recommendation_query:
-                # Use RAG for recommendations
-                result = await self.rag_service.recommend_providers(message)
-                
-                # Store AI response in session
-                ai_message = UserMessage(
-                    user_id=user_id,
-                    message=result["ai_response"],
-                    session_id=session.id
-                )
-                self.db.add(ai_message)
-                
-                # Update session state
-                self.update_session_state(session, {
-                    "last_query": message,
-                    "last_recommendations": result["providers"],
-                    "messages": [
-                        {"role": "user", "content": msg.message, "timestamp": msg.timestamp.isoformat()}
-                        for msg in recent_messages[-5:]
-                    ]
-                })
-                
-                return {
-                    "response": result["ai_response"],
-                    "providers": result["providers"],
-                    "session_id": session.id,
-                    "session_state": session.session_state
-                }
-            else:
-                # General chat - use simple LLM response
-                # For now, use a basic prompt (can be enhanced later)
-                prompt = f"""You are GlowSense AI, a helpful beauty assistant. 
-                
-User message: {message}
+            # STEP 3: Embed using the new local sentence-transformer
+            import traceback
+            try:
+                if embedding_model is None:
+                    raise Exception("embedding_model is not loaded.")
+                query_embedding = embedding_model.encode(message).tolist()
+                embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+            except Exception as e:
+                raise Exception(f"Failed to generate embedding: {e}")
 
-Previous conversation context:
-{json.dumps([{"role": "user" if i % 2 == 0 else "assistant", "content": msg.message} for i, msg in enumerate(recent_messages[-3:])], default=str)}
-
-Provide a helpful, concise response."""
+            # STEP 4: Pgvector search directly in chat
+            query = text("""
+                SELECT 
+                    sp.id,
+                    sp.business_name,
+                    sp.full_name,
+                    sp.bio,
+                    sp.city,
+                    sp.email,
+                    sp.phone,
+                    sp.profile_photo,
+                    sp.profile_picture,
+                    1 - (sp.embedding <=> CAST(:query_embedding AS vector)) as similarity
+                FROM service_providers sp
+                WHERE sp.embedding IS NOT NULL
+                  AND sp.is_active = true
+                ORDER BY sp.embedding <=> CAST(:query_embedding AS vector)
+                LIMIT 5
+            """)
+            
+            result = self.db.execute(query, {
+                "query_embedding": embedding_str
+            })
+            
+            similar_providers = []
+            for row in result:
+                # Need to also fetch services roughly
+                services = self.db.execute(text("SELECT name, price FROM services WHERE provider_id = :pid"), {"pid": row.id}).fetchall()
+                srv_text = ", ".join([f"{s.name} (${s.price})" for s in services])
                 
-                ai_response = await ollama_client.generate(prompt)
-                
-                # Store AI response
-                ai_message = UserMessage(
-                    user_id=user_id,
-                    message=ai_response,
-                    session_id=session.id
-                )
-                self.db.add(ai_message)
-                
-                # Update session state
-                self.update_session_state(session, {
-                    "messages": [
-                        {"role": "user" if i % 2 == 0 else "assistant", "content": msg.message, "timestamp": msg.timestamp.isoformat()}
-                        for i, msg in enumerate(recent_messages[-5:])
-                    ]
+                similar_providers.append({
+                    "id": row.id,
+                    "business_name": row.business_name,
+                    "full_name": row.full_name,
+                    "bio": row.bio,
+                    "city": row.city,
+                    "services": srv_text,
+                    "similarity": float(row.similarity) if row.similarity else 0.0
                 })
-                
-                return {
-                    "response": ai_response,
-                    "providers": [],
-                    "session_id": session.id,
-                    "session_state": session.session_state
-                }
+
+            provider_json = json.dumps(similar_providers, indent=2, default=str)
+
+            # STEP 5: Prepare conversation history for Gemini context
+            # Get the last 10 messages from the purely tracked session memory (excluding the current user message just appended)
+            history_messages = session_messages[-11:-1]
+            history_text = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history_messages])
+
+            # STEP 6: Call Google Gemini directly
+            try:
+                gemini = get_gemini_model()
+            except ValueError:
+                 raise Exception("Gemini API key is missing. Please add GEMINI_API_KEY to .env")
+
+            system_prompt = f"""
+You are GlowSense AI, an expert beauty concierge.
+Help the user schedule appointments and find service providers based on their query.
+
+Conversation Context:
+{history_text}
+
+Current User Message: {message}
+
+Recommended Matching Providers from Database:
+{provider_json}
+
+Instructions:
+1. Act friendly and welcoming.
+2. Directly address the user's current message.
+3. Recommend 1 to 3 of the BEST matching providers from the list. Mention their skills/prices.
+4. DO NOT invent providers.
+"""
+            
+            try:
+                response = gemini.generate_content(system_prompt)
+                ai_response = response.text
+            except Exception as e:
+                traceback.print_exc()
+                ai_response = "I encountered an error generating my response via Gemini, but found some providers matching your request behind the scenes."
+
+            # Store AI response
+            ai_message = UserMessage(
+                user_id=user_id,
+                message=ai_response,
+                session_id=session.id
+            )
+            self.db.add(ai_message)
+            self.db.commit() # Important to commit the message!
+            
+            # Update session memory array with Assistant response including providers
+            session_messages.append({
+                "role": "assistant",
+                "content": ai_response,
+                "providers": similar_providers,
+                "timestamp": ai_message.timestamp.isoformat()
+            })
+            
+            # Update session state
+            self.update_session_state(session, {
+                "messages": session_messages[-30:], # Keep the trailing history safely capped
+                "last_recommendations": similar_providers
+            })
+            
+            return {
+                "response": ai_response,
+                "providers": similar_providers,
+                "session_id": session.id,
+                "session_state": session.session_state
+            }
+
         except Exception as e:
             # Log the error and re-raise with more context
             import traceback
