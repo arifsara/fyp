@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Calendar, CheckCircle, XCircle, Clock, User, DollarSign, History, Loader2, AlertTriangle, UserCheck } from "lucide-react";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface Booking {
   id: number;
@@ -54,6 +55,7 @@ export default function BookingsPage() {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "confirmed" | "completed" | "cancelled" | "cancelled_by_provider" | "standby_pending">("all");
+  const { showAlert, showConfirm } = useCustomAlert();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -122,12 +124,12 @@ export default function BookingsPage() {
       fetchPayments(); // Refresh payments
     } catch (err: any) {
       console.error("Failed to update booking", err);
-      alert(err.message || "Failed to update booking status");
+      showAlert(err.message || "Failed to update booking status");
     }
   };
 
   const cancelWithStandby = async (bookingId: number) => {
-    if (!confirm("Are you sure you want to cancel this booking? The customer will be offered standby providers.")) return;
+    if (!(await showConfirm("Are you sure you want to cancel this booking? The customer will be offered standby providers."))) return;
     try {
       const res = await fetch(`http://localhost:8000/standby/provider/cancel-booking/${bookingId}`, {
         method: "PUT",
@@ -138,12 +140,12 @@ export default function BookingsPage() {
         throw new Error(errorData.detail || "Failed to cancel booking");
       }
       const data = await res.json();
-      alert(`Booking cancelled. ${data.standby_providers?.length || 0} standby provider(s) found for the customer.`);
+      showAlert(`Booking cancelled. ${data.standby_providers?.length || 0} standby provider(s) found for the customer.`);
       fetchBookings();
       fetchPayments();
     } catch (err: any) {
       console.error("Failed to cancel booking", err);
-      alert(err.message || "Failed to cancel booking");
+      showAlert(err.message || "Failed to cancel booking");
     }
   };
 
@@ -151,7 +153,7 @@ export default function BookingsPage() {
     const confirmMsg = action === "accept"
       ? "Accept this standby booking? The customer will pay your service price."
       : "Reject this standby booking? The customer will be able to pick another provider.";
-    if (!confirm(confirmMsg)) return;
+    if (!(await showConfirm(confirmMsg))) return;
     try {
       const res = await fetch("http://localhost:8000/standby/provider/respond", {
         method: "POST",
@@ -163,12 +165,12 @@ export default function BookingsPage() {
         throw new Error(errorData.detail || `Failed to ${action} booking`);
       }
       const data = await res.json();
-      alert(data.message);
+      showAlert(data.message);
       fetchBookings();
       fetchPayments();
     } catch (err: any) {
       console.error(`Failed to ${action} standby booking`, err);
-      alert(err.message || `Failed to ${action} booking`);
+      showAlert(err.message || `Failed to ${action} booking`);
     }
   };
 

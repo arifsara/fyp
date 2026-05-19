@@ -8,7 +8,7 @@ import SkinResultsCard from "@/components/skin/SkinResultsCard";
 interface Recommendation {
   morning_routine: string[];
   night_routine: string[];
-  products: string[];
+  products: (string | { active_ingredient: string; brand_product: string })[];
 }
 
 interface Condition {

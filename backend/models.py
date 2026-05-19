@@ -90,6 +90,7 @@ class PortfolioItem(Base):
     provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    experience_details = Column(Text, nullable=True)
     image_url = Column(String, nullable=True)
     video_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

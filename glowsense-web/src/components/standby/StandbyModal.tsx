@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   RefreshCw,
 } from "lucide-react";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface StandbyProvider {
   id: number;
@@ -41,6 +42,7 @@ export default function StandbyModal({
 }: StandbyModalProps) {
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [refunding, setRefunding] = useState(false);
+  const { showAlert, showConfirm } = useCustomAlert();
 
   if (!isOpen) return null;
 
@@ -62,23 +64,23 @@ export default function StandbyModal({
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.detail || "Failed to select provider");
+        showAlert(data.detail || "Failed to select provider");
         return;
       }
 
-      alert("Provider selected! Waiting for them to accept. You'll be able to pay once they confirm.");
+      showAlert("Provider selected! Waiting for them to accept. You'll be able to pay once they confirm.");
       onSelectProvider(providerId);
       onClose();
     } catch (err) {
       console.error(err);
-      alert("An error occurred");
+      showAlert("An error occurred");
     } finally {
       setSelectingId(null);
     }
   };
 
   const handleRefund = async () => {
-    if (!confirm("Are you sure you want to request a refund? This action cannot be undone.")) return;
+    if (!(await showConfirm("Are you sure you want to request a refund? This action cannot be undone."))) return;
     setRefunding(true);
     try {
       const token = localStorage.getItem("token");
@@ -93,16 +95,16 @@ export default function StandbyModal({
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.detail || "Refund failed");
+        showAlert(data.detail || "Refund failed");
         return;
       }
 
-      alert("Refund has been processed! The amount will be returned to your payment method within 5-10 business days.");
+      showAlert("Refund has been processed! The amount will be returned to your payment method within 5-10 business days.");
       onRequestRefund();
       onClose();
     } catch (err) {
       console.error(err);
-      alert("An error occurred");
+      showAlert("An error occurred");
     } finally {
       setRefunding(false);
     }

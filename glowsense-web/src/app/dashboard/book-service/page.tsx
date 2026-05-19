@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar, Clock, DollarSign, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface Service {
   id: number;
@@ -26,6 +27,7 @@ import { Suspense } from "react";
 function BookServicePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { showAlert } = useCustomAlert();
   const serviceId = searchParams.get("serviceId");
   const providerId = searchParams.get("providerId");
 
@@ -141,7 +143,7 @@ function BookServicePageContent() {
 
       const result = await res.json();
       // Show success message and redirect to bookings page
-      alert("Booking created successfully! Waiting for provider approval. You'll be able to pay once the provider accepts your booking.");
+      showAlert("Booking created successfully! Waiting for provider approval. You'll be able to pay once the provider accepts your booking.");
       router.push("/dashboard/my-bookings");
     } catch (err: any) {
       setError(err.message);

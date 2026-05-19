@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import sys
+import json
+from datetime import datetime, timezone
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -86,6 +88,31 @@ class AdminBookingItem(BaseModel):
     payment_status: str
     original_time_slot: Optional[str] = None  # Specific for cancelled_by_provider
     created_at: str
+
+
+class AdminStandbyItem(BaseModel):
+    id: int
+    customer_id: int
+    customer_name: str
+    customer_email: str
+    original_provider_id: Optional[int]
+    original_provider_name: str
+    original_provider_business: Optional[str]
+    assigned_provider_id: Optional[int]
+    assigned_provider_name: Optional[str]
+    service_id: int
+    service_name: str
+    service_price: str
+    booking_date: str
+    status: str
+    booking_status: Optional[str]
+    payment_status: str
+    days_since_cancellation: int
+    created_at: str
+
+
+class AdminAssignProviderRequest(BaseModel):
+    provider_id: int
 
 
 # =====================================================
@@ -427,3 +454,248 @@ async def get_all_bookings_admin(
         )
         
     return result
+
+
+# ────────────────────────────────────────────────
+# Standby Management Endpoints
+# ────────────────────────────────────────────────
+
+@router.get("/standby/active", response_model=List[AdminStandbyItem])
+async def get_active_standby_requests(
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch all bookings currently in a 'standby' or 'cancelled by provider' state.
+    """
+    from sqlalchemy import or_
+    
+    standby_statuses = ["cancelled_by_provider", "standby_pending", "standby_selected", "awaiting_extra_payment"]
+    
+    bookings = db.query(Booking).filter(
+        or_(
+            Booking.status.in_(standby_statuses),
+            Booking.booking_status.in_(standby_statuses)
+        )
+    ).order_by(Booking.created_at.desc()).all()
+    
+    result = []
+    now = datetime.now(timezone.utc)
+    
+    for b in bookings:
+        customer = db.query(Customer).filter(Customer.id == b.customer_id).first()
+        # Original provider is either stored in original_provider_id or it's the current provider_id if not yet reassigned
+        orig_id = b.original_provider_id or b.provider_id
+        original_provider = db.query(ServiceProvider).filter(ServiceProvider.id == orig_id).first()
+        
+        assigned_provider = None
+        if b.assigned_provider_id:
+            assigned_provider = db.query(ServiceProvider).filter(ServiceProvider.id == b.assigned_provider_id).first()
+            
+        service = db.query(Service).filter(Service.id == b.service_id).first()
+        
+        # Calculate days since cancellation
+        days_since = 0
+        if b.status == "cancelled_by_provider" or b.booking_status == "cancelled_by_provider":
+            # For simplicity, we'll use created_at as a proxy or assume cancellation happened recently
+            # Ideally we'd have a 'cancelled_at' field, but we'll use (now - created_at) as an upper bound
+            delta = now - b.created_at.replace(tzinfo=timezone.utc)
+            days_since = delta.days
+
+        result.append(
+            AdminStandbyItem(
+                id=b.id,
+                customer_id=b.customer_id,
+                customer_name=customer.full_name if customer else "N/A",
+                customer_email=customer.email if customer else "N/A",
+                original_provider_id=orig_id,
+                original_provider_name=original_provider.full_name if original_provider else "N/A",
+                original_provider_business=original_provider.business_name if original_provider else None,
+                assigned_provider_id=b.assigned_provider_id,
+                assigned_provider_name=assigned_provider.full_name if assigned_provider else None,
+                service_id=b.service_id,
+                service_name=service.name if service else "N/A",
+                service_price=service.price if service else "N/A",
+                booking_date=b.booking_date.isoformat(),
+                status=b.status,
+                booking_status=b.booking_status,
+                payment_status=b.payment_status,
+                days_since_cancellation=days_since,
+                created_at=b.created_at.isoformat()
+            )
+        )
+        
+    return result
+
+
+@router.get("/standby/suggested-providers/{booking_id}")
+async def get_suggested_providers(
+    booking_id: int,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Find providers in the same city and category as the original service.
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+        
+    service = db.query(Service).filter(Service.id == b.service_id).first() if 'service' in locals() else db.query(Service).filter(Service.id == booking.service_id).first()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+        
+    orig_provider = db.query(ServiceProvider).filter(ServiceProvider.id == (booking.original_provider_id or booking.provider_id)).first()
+    city = orig_provider.city if orig_provider else None
+    category = service.category
+    
+    # Simple matching for now: same city and have a service in the same category
+    from sqlalchemy import and_
+    
+    query = db.query(ServiceProvider).join(Service).filter(
+        and_(
+            ServiceProvider.is_active == True,
+            ServiceProvider.id != orig_provider.id if orig_provider else True,
+            ServiceProvider.city == city if city else True,
+            Service.category == category if category else True
+        )
+    ).distinct()
+    
+    suggested = query.all()
+    
+    result = []
+    for p in suggested:
+        # Find their specific service in this category
+        p_service = db.query(Service).filter(
+            Service.provider_id == p.id,
+            Service.category == category
+        ).first()
+        
+        result.append({
+            "id": p.id,
+            "full_name": p.full_name,
+            "business_name": p.business_name,
+            "city": p.city,
+            "level": p.level,
+            "price": p_service.price if p_service else "N/A",
+            "service_id": p_service.id if p_service else None
+        })
+        
+    return result
+
+
+@router.post("/standby/{booking_id}/assign")
+async def admin_assign_standby_provider(
+    booking_id: int,
+    body: AdminAssignProviderRequest,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin manually assigns a provider to a standby booking.
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+        
+    new_provider = db.query(ServiceProvider).filter(ServiceProvider.id == body.provider_id).first()
+    if not new_provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+        
+    # Update booking
+    if not booking.original_provider_id:
+        booking.original_provider_id = booking.provider_id
+        
+    booking.provider_id = new_provider.id
+    booking.assigned_provider_id = new_provider.id
+    booking.status = "standby_pending"
+    booking.booking_status = "standby_pending"
+    
+    # Notify customer and provider (admin-initiated)
+    from models import Notification
+    from models import Service
+    
+    service = db.query(Service).filter(Service.id == booking.service_id).first()
+    
+    # Notification for Customer
+    cust_notif = Notification(
+        customer_id=booking.customer_id,
+        booking_id=booking.id,
+        type="standby_selected",
+        title="Replacement Provider Assigned by Admin",
+        message=f"An administrator has assigned {new_provider.full_name} as your replacement provider for '{service.name}'. The provider has been notified.",
+        data=json.dumps({"booking_id": booking.id, "admin_assigned": True})
+    )
+    db.add(cust_notif)
+    
+    # Notification for Provider
+    prov_notif = Notification(
+        provider_id=new_provider.id,
+        booking_id=booking.id,
+        type="standby_selected",
+        title="Admin-Assigned Standby Request",
+        message=f"You have been assigned as a replacement provider for a '{service.name}' booking by an administrator. Please accept or reject this from your dashboard.",
+        data=json.dumps({"booking_id": booking.id, "admin_assigned": True})
+    )
+    db.add(prov_notif)
+    
+    db.commit()
+    return {"message": "Provider assigned successfully", "booking_id": booking.id}
+
+
+@router.post("/standby/{booking_id}/refund")
+async def admin_trigger_standby_refund(
+    booking_id: int,
+    _admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin manually triggers a refund for a standby booking.
+    """
+    from models import RefundRequest, Notification
+    
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+        
+    if booking.payment_status != "HELD_IN_ESCROW":
+        raise HTTPException(status_code=400, detail="Only bookings with funds in escrow can be refunded.")
+        
+    # Logic to trigger Stripe refund (mirroring standby_refund logic)
+    import stripe
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    
+    if not booking.stripe_payment_intent_id:
+        raise HTTPException(status_code=400, detail="No stripe payment intent found")
+        
+    try:
+        refund = stripe.Refund.create(payment_intent=booking.stripe_payment_intent_id)
+        
+        booking.status = "refunded"
+        booking.booking_status = "refunded"
+        booking.payment_status = "REFUNDED"
+        booking.stripe_refund_id = refund.id
+        
+        # Update payment record
+        from models import Payment
+        payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
+        if payment:
+            payment.status = "refunded"
+            payment.refunded_at = datetime.now(timezone.utc)
+            
+        # Notify Customer
+        notif = Notification(
+            customer_id=booking.customer_id,
+            booking_id=booking.id,
+            type="refund_processed",
+            title="Refund Processed by Admin",
+            message="An administrator has processed your refund for the cancelled booking. The funds should appear in your account in 5-10 business days.",
+            data=json.dumps({"booking_id": booking.id, "refund_id": refund.id})
+        )
+        db.add(notif)
+        db.commit()
+        
+        return {"message": "Refund processed successfully", "refund_id": refund.id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Refund failed: {str(e)}")

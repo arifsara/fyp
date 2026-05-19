@@ -22,6 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import AdminStandbyModal from "@/components/admin/AdminStandbyModal";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface AdminRatingItem {
   id: number;
@@ -97,8 +99,9 @@ interface AdminStats {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const { showAlert, showConfirm } = useCustomAlert();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"feedback" | "providers" | "customers" | "bookings">("feedback");
+  const [activeTab, setActiveTab] = useState<"feedback" | "providers" | "customers" | "bookings" | "standby">("feedback");
   
   const [stats, setStats] = useState<AdminStats>({
     total_ratings: 0,
@@ -111,12 +114,16 @@ export default function AdminDashboardPage() {
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [standbyRequests, setStandbyRequests] = useState<any[]>([]);
   
   const [bookingStatusFilter, setBookingStatusFilter] = useState("all");
   
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  const [isStandbyModalOpen, setIsStandbyModalOpen] = useState(false);
+  const [selectedStandbyBooking, setSelectedStandbyBooking] = useState<{id: number, price: string} | null>(null);
 
   useEffect(() => {
     fetchInitialData();
@@ -128,7 +135,8 @@ export default function AdminDashboardPage() {
       fetchRatings(),
       fetchProviders(),
       fetchCustomers(),
-      fetchBookings()
+      fetchBookings(),
+      fetchStandbyRequests()
     ]);
     setLoading(false);
   };
@@ -206,9 +214,74 @@ export default function AdminDashboardPage() {
       console.error("Error fetching bookings:", err);
     }
   };
+  
+  const fetchStandbyRequests = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    
+    try {
+      const res = await fetch("http://localhost:8000/admin/standby/active", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStandbyRequests(data);
+      }
+    } catch (err) {
+      console.error("Error fetching standby requests:", err);
+    }
+  };
+  
+  const handleAssignProvider = async (bookingId: number, providerId: number) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/assign`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ provider_id: providerId })
+      });
+      
+      if (res.ok) {
+        showAlert("Provider assigned successfully");
+        fetchStandbyRequests();
+        fetchBookings();
+      } else {
+        const data = await res.json();
+        showAlert(data.detail || "Failed to assign provider");
+      }
+    } catch (err) {
+      console.error("Assign error:", err);
+    }
+  };
+  
+  const handleTriggerRefund = async (bookingId: number) => {
+    if (!(await showConfirm("Are you sure you want to trigger a manual refund for this standby request?"))) return;
+    
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/refund`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        showAlert("Refund processed successfully");
+        fetchStandbyRequests();
+        fetchBookings();
+      } else {
+        const data = await res.json();
+        showAlert(data.detail || "Failed to process refund");
+      }
+    } catch (err) {
+      console.error("Refund error:", err);
+    }
+  };
 
   const handleDeleteProvider = async (id: number) => {
-    if (!confirm("Are you sure you want to remove this service provider? All their services, portfolio, and bookings will be deleted.")) return;
+    if (!(await showConfirm("Are you sure you want to remove this service provider? All their services, portfolio, and bookings will be deleted."))) return;
 
     const token = localStorage.getItem("token");
     try {
@@ -218,15 +291,15 @@ export default function AdminDashboardPage() {
       });
 
       if (res.ok) {
-        alert("Provider removed successfully");
+        showAlert("Provider removed successfully");
         fetchInitialData(); // Refresh everything
       } else {
         const data = await res.json();
-        alert(data.detail || "Failed to remove provider");
+        showAlert(data.detail || "Failed to remove provider");
       }
     } catch (err) {
       console.error("Delete error:", err);
-      alert("An error occurred while deleting");
+      showAlert("An error occurred while deleting");
     }
   };
 
@@ -440,6 +513,16 @@ export default function AdminDashboardPage() {
           >
             All Bookings
           </button>
+          <button 
+            onClick={() => {setActiveTab("standby"); setSearchTerm("");}}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "standby" 
+                ? "bg-white text-slate-900 shadow-sm" 
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Standby Requests
+          </button>
         </div>
 
         {/* Table Rendering */}
@@ -450,6 +533,7 @@ export default function AdminDashboardPage() {
               {activeTab === "providers" && "Manage Service Providers"}
               {activeTab === "customers" && "Registered Customer Database"}
               {activeTab === "bookings" && "Comprehensive Booking Tracker"}
+              {activeTab === "standby" && "Active Standby & Cancellation Management"}
             </CardTitle>
             
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
@@ -578,6 +662,7 @@ export default function AdminDashboardPage() {
                         <th className="px-6 py-4">Contact Info</th>
                         <th className="px-6 py-4">City</th>
                         <th className="px-6 py-4">Stats</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -622,6 +707,26 @@ export default function AdminDashboardPage() {
                                 <p className="text-xs font-bold text-slate-900">{p.average_rating}</p>
                                 <p className="text-[10px] text-slate-400 tracking-tight">Rating</p>
                               </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => router.push(`/admin/provider/${p.id}`)}
+                                className="text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteProvider(p.id)}
+                                className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -723,11 +828,94 @@ export default function AdminDashboardPage() {
                     </tbody>
                   </>
                 )}
+
+                {/* STANDBY VIEW */}
+                {activeTab === "standby" && (
+                  <>
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold">
+                        <th className="px-6 py-4">Customer</th>
+                        <th className="px-6 py-4">Original Provider / Service</th>
+                        <th className="px-6 py-4">Current Status</th>
+                        <th className="px-6 py-4">Delay</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {standbyRequests.length > 0 ? standbyRequests.map((s) => (
+                        <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-bold text-slate-900">{s.customer_name}</p>
+                            <p className="text-xs text-slate-500">{s.customer_email}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="font-bold text-slate-900">{s.service_name}</p>
+                            <p className="text-xs text-slate-500">{s.original_provider_business || s.original_provider_name}</p>
+                            <p className="text-[10px] text-slate-400">Price: {s.service_price}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider w-fit ${getStatusBadgeConfig(s.booking_status || s.status)}`}>
+                                {(s.booking_status || s.status).replace(/_/g, ' ')}
+                              </span>
+                              {s.assigned_provider_name && (
+                                <p className="text-[10px] text-slate-500 italic">Assigned to: {s.assigned_provider_name}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`text-xs font-bold ${s.days_since_cancellation > 2 ? 'text-red-500' : 'text-slate-600'}`}>
+                              {s.days_since_cancellation} days ago
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-8"
+                                onClick={() => {
+                                  setSelectedStandbyBooking({ id: s.id, price: s.service_price });
+                                  setIsStandbyModalOpen(true);
+                                }}
+                              >
+                                Assign
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-8 border-red-200 text-red-600 hover:bg-red-50"
+                                onClick={() => handleTriggerRefund(s.id)}
+                              >
+                                Refund
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )) : (
+                        <EmptyState message="No active standby requests found" />
+                      )}
+                    </tbody>
+                  </>
+                )}
               </table>
             </div>
           </CardContent>
         </Card>
       </main>
+
+      {selectedStandbyBooking && (
+        <AdminStandbyModal
+          isOpen={isStandbyModalOpen}
+          onClose={() => {
+            setIsStandbyModalOpen(false);
+            setSelectedStandbyBooking(null);
+          }}
+          bookingId={selectedStandbyBooking.id}
+          originalPrice={selectedStandbyBooking.price}
+          onAssign={handleAssignProvider}
+        />
+      )}
     </div>
   );
 }

@@ -676,7 +676,16 @@ async def add_portfolio_item(item: PortfolioItemCreate, current_provider: models
 @app.get("/provider/portfolio")
 async def get_portfolio(current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
     items = db.query(models.PortfolioItem).filter(models.PortfolioItem.provider_id == current_provider.id).all()
-    return items
+    return [
+        {
+            "id": i.id,
+            "title": i.title,
+            "description": i.description,
+            "experience_details": i.experience_details,
+            "image_url": i.image_url,
+            "video_url": i.video_url
+        } for i in items
+    ]
 
 @app.put("/provider/portfolio/{item_id}")
 async def update_portfolio_item(item_id: int, item: PortfolioItemCreate, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
@@ -694,7 +703,17 @@ async def update_portfolio_item(item_id: int, item: PortfolioItemCreate, current
     
     db.commit()
     db.refresh(db_item)
-    return {"message": "Updated", "item": db_item}
+    return {
+        "message": "Updated", 
+        "item": {
+            "id": db_item.id,
+            "title": db_item.title,
+            "description": db_item.description,
+            "experience_details": db_item.experience_details,
+            "image_url": db_item.image_url,
+            "video_url": db_item.video_url
+        }
+    }
 
 @app.delete("/provider/portfolio/{item_id}")
 async def delete_portfolio_item(item_id: int, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
@@ -716,7 +735,7 @@ async def add_service(service: ServiceCreate, current_provider: models.ServicePr
         description=service.description,
         price=service.price,
         duration=service.duration,
-        availability_schedule=service.availability_schedule
+        availability_schedule=json.dumps(service.availability_schedule) if service.availability_schedule else None
     )
     db.add(new_service)
     db.commit()
@@ -726,7 +745,17 @@ async def add_service(service: ServiceCreate, current_provider: models.ServicePr
 @app.get("/provider/services")
 async def get_services(current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
     services = db.query(models.Service).filter(models.Service.provider_id == current_provider.id).all()
-    return services
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "category": s.category,
+            "description": s.description,
+            "price": s.price,
+            "duration": s.duration,
+            "availability_schedule": json.loads(s.availability_schedule) if s.availability_schedule else None
+        } for s in services
+    ]
 
 @app.put("/provider/services/{service_id}")
 async def update_service(service_id: int, service: ServiceCreate, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
@@ -739,7 +768,7 @@ async def update_service(service_id: int, service: ServiceCreate, current_provid
     db_service.description = service.description
     db_service.price = service.price
     db_service.duration = service.duration
-    db_service.availability_schedule = service.availability_schedule
+    db_service.availability_schedule = json.dumps(service.availability_schedule) if service.availability_schedule else None
     
     db.commit()
     return {"message": "Service updated"}
@@ -939,7 +968,7 @@ async def update_booking_status(
                 raise HTTPException(status_code=400, detail=f"Invalid payment amount format: {payment.amount}")
 
             gross_cents = int(round(gross_amount * 100))
-            provider_cents = int(round(gross_cents * 0.9))  # 10% platform fee
+            provider_cents = int(round(gross_cents * 0.95))  # 5% platform fee
             currency = (payment.currency or "usd").lower()
 
             if not booking.stripe_charge_id:
@@ -1008,7 +1037,7 @@ async def update_booking_status(
             "provider"
         )
     
-    return {"message": f"Booking {status_update.status}", "booking": booking}
+    return {"message": f"Booking {status_update.status}", "booking_id": booking.id}
 
 @app.put("/provider/services/{service_id}/time-slots")
 async def update_service_time_slots(
@@ -1070,7 +1099,7 @@ async def update_service_time_slots(
                 detail=f"Invalid time format for {day}. Use HH:MM format (e.g., 09:00)"
             )
     
-    service.availability_schedule = schedule
+    service.availability_schedule = json.dumps(schedule)
     db.commit()
     db.refresh(service)
     return {"message": "Time slots updated", "availability_schedule": service.availability_schedule}
@@ -1346,6 +1375,18 @@ async def delete_time_slot(
 async def get_provider_dashboard(current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
     """Get dashboard data: services, bookings, and portfolio items"""
     from services.provider_level_service import ProviderLevelService
+    
+    # Check and update stripe onboarding status if pending
+    if stripe and current_provider.stripe_account_id and not current_provider.stripe_onboarding_complete:
+        try:
+            account = stripe.Account.retrieve(current_provider.stripe_account_id)
+            is_complete = bool(getattr(account, "charges_enabled", False) and getattr(account, "payouts_enabled", False))
+            if is_complete:
+                current_provider.stripe_onboarding_complete = True
+                db.commit()
+                db.refresh(current_provider)
+        except Exception as e:
+            print(f"Warning: Failed to refresh Stripe onboarding status: {e}")
     
     # Query data
     db_services = db.query(models.Service).filter(models.Service.provider_id == current_provider.id, models.Service.is_active == True).all()

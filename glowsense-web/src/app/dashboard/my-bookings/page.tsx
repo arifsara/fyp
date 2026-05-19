@@ -8,6 +8,7 @@ import PaymentModal from "@/components/payment/PaymentModal";
 import RatingModal from "@/components/rating/RatingModal";
 import StandbyModal from "@/components/standby/StandbyModal";
 import DifferencePaymentModal from "@/components/payment/DifferencePaymentModal";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface Booking {
   id: number;
@@ -44,6 +45,7 @@ export default function MyBookingsPage() {
   const [standbyBookingId, setStandbyBookingId] = useState<number | null>(null);
   const [showDiffPaymentModal, setShowDiffPaymentModal] = useState(false);
   const [diffPaymentBooking, setDiffPaymentBooking] = useState<Booking | null>(null);
+  const { showAlert, showConfirm } = useCustomAlert();
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -136,7 +138,7 @@ export default function MyBookingsPage() {
     } catch (err: any) {
       console.error("Failed to fetch bookings", err);
       // Show error to user
-      alert(`Failed to fetch bookings: ${err.message || err}`);
+      showAlert(`Failed to fetch bookings: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -174,16 +176,16 @@ export default function MyBookingsPage() {
         setStandbyBookingId(bookingId);
         setShowStandbyModal(true);
       } else {
-        alert("Failed to load standby providers");
+        showAlert("Failed to load standby providers");
       }
     } catch (err) {
       console.error(err);
-      alert("An error occurred");
+      showAlert("An error occurred");
     }
   };
 
   const cancelBooking = async (bookingId: number) => {
-    if (!confirm("Are you sure you want to cancel this booking?")) return;
+    if (!(await showConfirm("Are you sure you want to cancel this booking?"))) return;
     try {
       const res = await fetch(`http://localhost:8000/customer/bookings/${bookingId}/cancel`, {
         method: "PUT",
@@ -196,7 +198,7 @@ export default function MyBookingsPage() {
       fetchBookings();
     } catch (err: any) {
       console.error("Failed to cancel booking", err);
-      alert(err.message || "Failed to cancel booking");
+      showAlert(err.message || "Failed to cancel booking");
     }
   };
 
@@ -585,7 +587,7 @@ export default function MyBookingsPage() {
             setShowDiffPaymentModal(false);
             setDiffPaymentBooking(null);
             fetchBookings();
-            alert("Payment confirmed! Your booking is now confirmed.");
+            showAlert("Payment confirmed! Your booking is now confirmed.");
           }}
         />
       )}

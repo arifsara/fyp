@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 interface Recommendation {
   morning_routine: string[];
   night_routine: string[];
-  products: string[];
+  products: (string | { active_ingredient: string; brand_product: string })[];
 }
 
 interface Condition {
@@ -283,7 +283,16 @@ export default function SkinResultsCard({
                   className="px-4 py-2 bg-white border border-emerald-100 rounded-xl text-sm font-medium text-emerald-800 flex items-center gap-2 shadow-sm"
                 >
                   <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                  {product}
+                  {typeof product === "string" ? (
+                    product
+                  ) : (
+                    <div className="flex flex-col">
+                      <span className="font-bold leading-tight">{product.brand_product}</span>
+                      <span className="text-[10px] text-emerald-600/70 font-normal">
+                        Active: {product.active_ingredient}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

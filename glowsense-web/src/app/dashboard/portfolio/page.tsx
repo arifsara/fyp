@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload, X, Edit, Trash2, Image as ImageIcon, Video, Calendar, DollarSign, Clock, Save, Loader2 } from "lucide-react";
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
 
 interface PortfolioItem {
   id?: number;
@@ -30,6 +31,7 @@ export default function PortfolioManagementPage() {
   const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(false);
+  const { showAlert, showConfirm } = useCustomAlert();
   
   // Portfolio Form State
   const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>({ title: "" });
@@ -168,7 +170,7 @@ export default function PortfolioManagementPage() {
   };
 
   const handleDeletePortfolio = async (id: number) => {
-    if (!confirm("Delete this portfolio item?")) return;
+    if (!(await showConfirm("Delete this portfolio item?"))) return;
     try {
       const res = await fetch(`http://localhost:8000/provider/portfolio/${id}`, {
         method: "DELETE",
@@ -211,7 +213,7 @@ export default function PortfolioManagementPage() {
   };
 
   const handleDeleteService = async (id: number) => {
-    if (!confirm("Delete this service?")) return;
+    if (!(await showConfirm("Delete this service?"))) return;
     try {
       const res = await fetch(`http://localhost:8000/provider/services/${id}`, {
         method: "DELETE",
@@ -621,7 +623,7 @@ export default function PortfolioManagementPage() {
                       if (maxEnd) maxEnd.setMonth(maxEnd.getMonth() + 3);
                       
                       if (end && maxEnd && end > maxEnd) {
-                        alert("End date cannot be more than 3 months from start date");
+                        showAlert("End date cannot be more than 3 months from start date");
                         return;
                       }
                       setTimeSlotForm({ ...timeSlotForm, end_date: e.target.value });
@@ -707,7 +709,7 @@ export default function PortfolioManagementPage() {
               <Button
                 onClick={async () => {
                   if (!timeSlotForm.start_date || !timeSlotForm.end_date || timeSlotForm.days_of_week.length === 0) {
-                    alert("Please fill in all required fields");
+                    showAlert("Please fill in all required fields");
                     return;
                   }
 
@@ -736,7 +738,7 @@ export default function PortfolioManagementPage() {
                     }
                     
                     const data = await res.json();
-                    alert(`Successfully created ${data.created_count} time slots!`);
+                    showAlert(`Successfully created ${data.created_count} time slots!`);
                     setManagingTimeSlots(null);
                     setTimeSlotForm({
                       start_date: "",
@@ -749,7 +751,7 @@ export default function PortfolioManagementPage() {
                     fetchServices();
                   } catch (err: any) {
                     console.error("Failed to create time slots", err);
-                    alert(err.message || "Failed to create time slots");
+                    showAlert(err.message || "Failed to create time slots");
                   } finally {
                     setCreatingSlots(false);
                   }

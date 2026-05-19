@@ -33,12 +33,12 @@ ML_SERVICE_URL = os.getenv("SKIN_ML_SERVICE_URL", "http://localhost:8001")
 
 # Configure Gemini for skincare recommendations dynamically
 def get_analysis_model():
-    analysis_key = "AIzaSyD0J4iL8uf2xpjdFs4JhOCmlI4l2YIB0Wo"
-    if not analysis_key:
+    api_key = os.getenv("SkinAnalysisKey") 
+    if not api_key:
         print("Warning: 'AnalysisKey' not found in .env. AI recommendations disabled.")
         return None
-    genai.configure(api_key=analysis_key)
-    # Using gemini-1.5-flash for fast, structured responses
+    genai.configure(api_key=api_key)
+    # Using gemini-2.5-flash for fast, structured responses
     return genai.GenerativeModel('gemini-2.5-flash')
 
 # Shared httpx client (connection pooling)

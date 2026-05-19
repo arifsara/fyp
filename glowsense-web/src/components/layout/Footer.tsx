@@ -5,8 +5,11 @@ import { Sparkles, Instagram, Twitter, Facebook } from "lucide-react";
 
 import { usePathname } from "next/navigation";
 
+import { useCustomAlert } from "@/components/providers/CustomAlertProvider";
+
 export function Footer() {
   const pathname = usePathname();
+  const { showAlert } = useCustomAlert();
 
   const shouldHide = pathname === "/dashboard/ai-assistant";
   if (shouldHide) return null;
@@ -47,8 +50,8 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><a href="mailto:support@glowsense.ai" className="hover:text-primary">Contact Support</a></li>
               <li><Link href="/dashboard" className="hover:text-primary">Dashboard</Link></li>
-              <li><a href="#" className="hover:text-primary" onClick={(e) => { e.preventDefault(); alert("Privacy Policy - Coming Soon"); }}>Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-primary" onClick={(e) => { e.preventDefault(); alert("Terms of Service - Coming Soon"); }}>Terms of Service</a></li>
+              <li><a href="#" className="hover:text-primary" onClick={(e) => { e.preventDefault(); showAlert("Privacy Policy - Coming Soon"); }}>Privacy Policy</a></li>
+              <li><a href="#" className="hover:text-primary" onClick={(e) => { e.preventDefault(); showAlert("Terms of Service - Coming Soon"); }}>Terms of Service</a></li>
             </ul>
           </div>
 

@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [savingBio, setSavingBio] = useState(false);
   const [payoutSetupLoading, setPayoutSetupLoading] = useState(false);
   const [payoutSetupUrl, setPayoutSetupUrl] = useState<string | null>(null);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const currentRole = localStorage.getItem("role");
@@ -133,7 +134,7 @@ export default function DashboardPage() {
         window.location.href = data.url;
       }
     } catch (err: any) {
-      setError(err.message || "Failed to start payout setup");
+      setPayoutError(err.message || "Failed to start payout setup");
     } finally {
       setPayoutSetupLoading(false);
     }
@@ -465,6 +466,7 @@ export default function DashboardPage() {
               </Button>
             )}
           </div>
+          {payoutError && <div className="mt-2 text-xs text-red-500 bg-red-50 border border-red-200 p-2 rounded-md">{payoutError}</div>}
         </div>
       </div>
 

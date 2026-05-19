@@ -79,12 +79,12 @@ export default function ProvidersPage() {
     // Check if user is logged in as customer
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
-    
+
     if (!token || (role !== "customer" && role !== "admin")) {
       router.push("/login/customer");
       return;
     }
-    
+
     fetchProviders();
     const urlParams = new URLSearchParams(window.location.search);
     const providerId = urlParams.get('id');
@@ -99,7 +99,7 @@ export default function ProvidersPage() {
       if (!res.ok) throw new Error("Failed to fetch providers");
       const data = await res.json();
       setProviders(data);
-      
+
       // Fetch ratings for all providers
       const ratingsPromises = data.map((provider: ServiceProvider) =>
         fetch(`http://localhost:8000/ratings/provider/${provider.id}/average`)
@@ -111,7 +111,7 @@ export default function ProvidersPage() {
           }))
           .catch(() => ({ id: provider.id, average: 0, total: 0 }))
       );
-      
+
       const ratings = await Promise.all(ratingsPromises);
       const ratingsMap: Record<number, { average: number; total: number }> = {};
       ratings.forEach((r: { id: number; average: number; total: number }) => {
@@ -131,7 +131,7 @@ export default function ProvidersPage() {
       if (!res.ok) throw new Error("Failed to fetch provider details");
       const data = await res.json();
       setSelectedProvider(data);
-      
+
       // Fetch rating for this provider if not already loaded
       if (!providerRatings[providerId]) {
         try {
@@ -150,7 +150,7 @@ export default function ProvidersPage() {
           console.error("Failed to fetch rating", err);
         }
       }
-      
+
       // Fetch all ratings for this provider (for display in profile)
       try {
         const ratingsRes = await fetch(`http://localhost:8000/ratings/provider/${providerId}/all`);
@@ -160,7 +160,7 @@ export default function ProvidersPage() {
             ...prev,
             [providerId]: ratingsData.ratings || []
           }));
-          
+
           // Also update the average rating
           setProviderRatings(prev => ({
             ...prev,
@@ -179,7 +179,7 @@ export default function ProvidersPage() {
   };
 
   const filteredProviders = providers.filter((provider) => {
-    const matchesSearch = 
+    const matchesSearch =
       provider.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       provider.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       provider.city?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -211,9 +211,9 @@ export default function ProvidersPage() {
           <div className="flex items-start gap-6">
             <div className="h-24 w-24 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
               {selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo ? (
-                <img 
-                  src={(selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo)?.startsWith('http') 
-                    ? (selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo) 
+                <img
+                  src={(selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo)?.startsWith('http')
+                    ? (selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo)
                     : `http://localhost:8000${selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo}`}
                   alt={selectedProvider.provider.full_name}
                   className="w-full h-full object-cover"
@@ -227,12 +227,12 @@ export default function ProvidersPage() {
                 <Briefcase className="h-12 w-12 text-primary" />
               </div>
             </div>
-              <div className="flex-1">
+            <div className="flex-1">
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h1 className="text-3xl font-bold">{selectedProvider.provider.full_name}</h1>
                 {selectedProvider.provider.level && (
-                  <ProviderLevelBadge 
-                    level={selectedProvider.provider.level} 
+                  <ProviderLevelBadge
+                    level={selectedProvider.provider.level}
                     levelInfo={selectedProvider.provider.level_info}
                     size="lg"
                   />
@@ -286,7 +286,7 @@ export default function ProvidersPage() {
                 <div key={item.id} className="bg-white rounded-2xl border border-border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                   {item.image_url && (
                     <div className="aspect-video bg-muted overflow-hidden">
-                      <img 
+                      <img
                         src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
                         alt={item.title}
                         className="w-full h-full object-cover"
@@ -414,8 +414,8 @@ export default function ProvidersPage() {
                       <span>{service.duration}</span>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full"
                     onClick={() => {
                       router.push(`/dashboard/book-service?serviceId=${service.id}&providerId=${selectedProvider.provider.id}`);
@@ -466,17 +466,17 @@ export default function ProvidersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProviders.map((provider) => (
-            <div 
-              key={provider.id} 
+            <div
+              key={provider.id}
               className="bg-white rounded-2xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
               onClick={() => fetchProviderDetails(provider.id)}
             >
               <div className="flex items-start gap-4 mb-4">
                 <div className="h-16 w-16 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
                   {provider.profile_picture || provider.profile_photo ? (
-                    <img 
-                      src={(provider.profile_picture || provider.profile_photo)?.startsWith('http') 
-                        ? (provider.profile_picture || provider.profile_photo) 
+                    <img
+                      src={(provider.profile_picture || provider.profile_photo)?.startsWith('http')
+                        ? (provider.profile_picture || provider.profile_photo)
                         : `http://localhost:8000${provider.profile_picture || provider.profile_photo}`}
                       alt={provider.full_name}
                       className="w-full h-full object-cover"
@@ -494,8 +494,8 @@ export default function ProvidersPage() {
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h3 className="font-semibold text-lg truncate">{provider.full_name}</h3>
                     {provider.level && (
-                      <ProviderLevelBadge 
-                        level={provider.level} 
+                      <ProviderLevelBadge
+                        level={provider.level}
                         levelInfo={provider.level_info}
                         size="sm"
                       />
@@ -512,11 +512,11 @@ export default function ProvidersPage() {
                   )}
                 </div>
               </div>
-              
+
               {provider.bio && (
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{provider.bio}</p>
               )}
-              
+
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-4">
                 {provider.city && (
                   <div className="flex items-center gap-1">
@@ -525,9 +525,9 @@ export default function ProvidersPage() {
                   </div>
                 )}
               </div>
-              
-              <Button 
-                variant="outline" 
+
+              <Button
+                variant="outline"
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
