@@ -20,7 +20,8 @@ import shutil
 import uuid
 from dotenv import load_dotenv
 import httpx
-
+import scripts.generate_provider_embeddings
+import skin_api
 # Google OAuth (ID token verification)
 try:
     from google.oauth2 import id_token as google_id_token
@@ -106,6 +107,8 @@ app.include_router(skin_analysis_router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize scheduler when app starts"""
+    print("🚀 Loading Skin Analysis AI Model...")
+    skin_api._load_model()
     if scheduler:
         try:
             scheduler.start()
@@ -620,22 +623,46 @@ async def upload_portfolio(file: UploadFile = File(...)):
     return {"url": f"/{file_path}", "filename": file.filename}
 
 @app.post("/upload/profile")
-async def upload_profile(file: UploadFile = File(...), current_provider: models.ServiceProvider = Depends(get_current_provider)):
-    """Upload profile photo (requires authentication)"""
-    file_ext = file.filename.split(".")[-1]
-    if file_ext.lower() not in ["jpg", "jpeg", "png", "gif", "webp"]:
-        raise HTTPException(status_code=400, detail="Only image files allowed (jpg, jpeg, png, gif, webp)")
-    
-    # Create profile directory if it doesn't exist
+async def upload_profile(
+    file: UploadFile = File(...),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(database.get_db)
+):
+    """Upload profile photo - works for both providers and customers"""
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        email = payload.get("sub")
+        role = payload.get("role")
+        if not email or role not in ("provider", "customer"):
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+    file_ext = file.filename.split(".")[-1].lower()
+    if file_ext not in ["jpg", "jpeg", "png", "gif", "webp"]:
+        raise HTTPException(status_code=400, detail="Only image files allowed")
+
     os.makedirs(f"{UPLOAD_DIR}/profile", exist_ok=True)
-    
-    # Generate unique filename to avoid conflicts
     unique_filename = f"{uuid.uuid4()}.{file_ext}"
     file_path = f"{UPLOAD_DIR}/profile/{unique_filename}"
-    
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
+
+    # Auto-update the profile photo in DB based on role
+    if role == "provider":
+        provider = db.query(models.ServiceProvider).filter(models.ServiceProvider.email == email).first()
+        if provider:
+            provider.profile_photo = f"/{file_path}"
+            provider.profile_picture = f"/{file_path}"
+            db.commit()
+    elif role == "customer":
+        customer = db.query(models.Customer).filter(models.Customer.email == email).first()
+        if customer:
+            customer.profile_picture = f"/{file_path}"
+            db.commit()
+
     return {"url": f"/{file_path}", "filename": unique_filename}
 
 @app.post("/upload/documents")
@@ -1535,7 +1562,9 @@ async def update_provider_profile(request: dict, current_provider: models.Servic
 @app.put("/provider/profile/photo")
 async def update_provider_profile_photo(request: dict, current_provider: models.ServiceProvider = Depends(get_current_provider), db: Session = Depends(database.get_db)):
     """Update provider profile photo"""
-    current_provider.profile_photo = request.get("profile_photo", "")
+    photo_url = request.get("profile_photo", "")
+    current_provider.profile_photo = photo_url
+    current_provider.profile_picture = photo_url
     db.commit()
     db.refresh(current_provider)
     return {"message": "Profile photo updated", "profile_photo": current_provider.profile_photo}
@@ -1847,6 +1876,14 @@ async def update_customer_profile(request: dict, current_customer: models.Custom
             "budget_range": current_customer.budget_range
         }
     }
+
+@app.put("/customer/profile/photo")
+async def update_customer_profile_photo(request: dict, current_customer: models.Customer = Depends(get_current_customer), db: Session = Depends(database.get_db)):
+    """Update customer profile photo"""
+    current_customer.profile_picture = request.get("profile_photo", "")
+    db.commit()
+    db.refresh(current_customer)
+    return {"message": "Profile photo updated", "profile_picture": current_customer.profile_picture}
 
 @app.get("/services/{service_id}/available-slots")
 async def get_available_time_slots(service_id: int, date: str, db: Session = Depends(database.get_db)):
@@ -2618,3 +2655,14 @@ async def get_pakistan_cities():
 @app.get("/")
 async def read_root():
     return {"message": "GlowSense AI Backend (Multi-Role) is Running!"}
+
+import subprocess
+@app.post("/api/ar/launch")
+async def launch_ar_studio():
+    """Launch the local AR Virtual Makeup Studio Tkinter app."""
+    try:
+        subprocess.Popen(["python", "ar_makeup.py"], cwd=".")
+        return {"status": "success", "message": "AR Studio launched"}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}

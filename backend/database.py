@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Format: postgresql://username:password@localhost:port/dbname
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:18220@localhost:5432/glowsense_db")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/glowsense_db")
 
 # Optimized engine with connection pooling for faster queries
 # Added connect_args with timeout to prevent hanging

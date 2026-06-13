@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Sparkles, Instagram, Twitter, Facebook } from "lucide-react";
+import { Instagram, Twitter, Facebook } from "lucide-react";
 
 import { usePathname } from "next/navigation";
 
@@ -21,9 +21,7 @@ export function Footer() {
           {/* Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white">
-                <Sparkles className="h-5 w-5" />
-              </div>
+              <img src="/logo.png" alt="GlowSense AI Logo" className="h-8 w-auto object-contain" />
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
                 GlowSense AI
               </span>

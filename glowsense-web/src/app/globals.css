@@ -1,78 +1,199 @@
+/* ─── Premium Font ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
 @import "tailwindcss";
 
+/* ─── Design Tokens ────────────────────────────────────────── */
 :root {
   /* Primary Pink Palette */
-  --primary: #FF85A9;
+  --primary: #F43F8A;
   --primary-light: #FF85A9;
-  --primary-dark: #FF85A9;
-  
-  /* Secondary/Neutral Palette */
+  --primary-dark: #D1226E;
+  --primary-glow: rgba(244, 63, 138, 0.35);
+
+  /* Background & Surface */
   --background: #FFF5F7;
-  --foreground: #1A1A1A;
-  
+  --foreground: #1C1120;          /* rich dark plum-black, not pure #000 */
+
   --card: #FFFFFF;
-  --card-foreground: #1A1A1A;
-  
+  --card-foreground: #1C1120;
+
   --muted: #F3F4F6;
-  --muted-foreground: #6B7280;
-  
+  --muted-foreground: #5C5470;    /* slightly warmer than default gray */
+
   --accent: #FFE4ED;
   --accent-foreground: #ea548d;
-  
+
   --border: #E5E7EB;
   --input: #F9FAFB;
-  --ring: #FF4D8D;
-  
-  /* Status Colors */
+  --ring: #F43F8A;
+
+  /* Status */
   --success: #10B981;
   --warning: #F59E0B;
-  --error: #EF4444;
-  
-  /* Border Radius */
+  --error:   #EF4444;
+
   --radius: 0.75rem;
 }
 
+/* ─── Tailwind Theme Extension ─────────────────────────────── */
 @theme {
-  --color-primary: var(--primary);
-  --color-primary-light: var(--primary-light);
-  --color-primary-dark: var(--primary-dark);
-  
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  
-  --color-muted: var(--muted);
+  --color-primary:          var(--primary);
+  --color-primary-light:    var(--primary-light);
+  --color-primary-dark:     var(--primary-dark);
+  --color-background:       var(--background);
+  --color-foreground:       var(--foreground);
+  --color-card:             var(--card);
+  --color-card-foreground:  var(--card-foreground);
+  --color-muted:            var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  
-  --radius: var(--radius);
+  --color-accent:           var(--accent);
+  --color-accent-foreground:var(--accent-foreground);
+  --color-border:           var(--border);
+  --color-input:            var(--input);
+  --color-ring:             var(--ring);
+  --radius:                 var(--radius);
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-}
-::-webkit-scrollbar-track {
-  background: var(--background);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--primary-light);
-  border-radius: 5px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary);
-}
-
+/* ─── Base ──────────────────────────────────────────────────── */
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: 'Plus Jakarta Sans', var(--font-geist-sans), Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ─── Custom Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+/* ════════════════════════════════════════════════════════════ */
+/*  HERO SECTION UTILITIES                                      */
+/* ════════════════════════════════════════════════════════════ */
+
+/* 1. Gradient "Smart." text ──────────────────────────────── */
+.hero-gradient-text {
+  background: linear-gradient(135deg, #F43F8A 0%, #A855F7 60%, #EC4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.40));
+}
+
+/* 2. Ambient background blobs ────────────────────────────── */
+.hero-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  pointer-events: none;
+  will-change: transform;
+}
+.hero-blob-pink {
+  width: 520px; height: 520px;
+  background: radial-gradient(circle, #FF85A9 0%, #F43F8A 55%, transparent 100%);
+  top: -120px; right: -80px;
+  animation: blobDrift 14s ease-in-out infinite alternate;
+}
+.hero-blob-purple {
+  width: 460px; height: 460px;
+  background: radial-gradient(circle, #C084FC 0%, #7C3AED 60%, transparent 100%);
+  bottom: 60px; left: -100px;
+  animation: blobDrift 18s ease-in-out infinite alternate-reverse;
+  opacity: 0.35;
+}
+.hero-blob-peach {
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, #FED7AA 0%, #FB923C 55%, transparent 100%);
+  top: 40%; left: 38%;
+  animation: blobDrift 22s ease-in-out infinite alternate;
+  opacity: 0.28;
+}
+
+@keyframes blobDrift {
+  0%   { transform: translate(0px, 0px)    scale(1);    }
+  33%  { transform: translate(22px, -18px)  scale(1.06); }
+  66%  { transform: translate(-14px, 24px)  scale(0.97); }
+  100% { transform: translate(10px, -10px)  scale(1.03); }
+}
+
+/* 3. Primary CTA gradient button ─────────────────────────── */
+.btn-primary-gradient {
+  background: linear-gradient(135deg, #F43F8A 0%, #EC4899 45%, #A855F7 100%);
+  box-shadow: 0 8px 24px rgba(244, 63, 138, 0.45), 0 2px 6px rgba(168, 85, 247, 0.20);
+  border: none;
+  color: #fff !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.btn-primary-gradient:hover {
+  transform: translateY(-2px) scale(1.025);
+  box-shadow: 0 14px 36px rgba(244, 63, 138, 0.55), 0 4px 12px rgba(168, 85, 247, 0.30);
+  filter: brightness(1.08);
+}
+.btn-primary-gradient:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* 4. Secondary outline button ────────────────────────────── */
+.btn-secondary-outline {
+  background: rgba(255, 255, 255, 0.60);
+  border: 1.5px solid #F43F8A;
+  color: #F43F8A !important;
+  backdrop-filter: blur(6px);
+  transition: background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+.btn-secondary-outline:hover {
+  background: linear-gradient(135deg, rgba(244,63,138,0.08) 0%, rgba(168,85,247,0.08) 100%);
+  box-shadow: 0 4px 20px rgba(244,63,138,0.20);
+  transform: translateY(-2px) scale(1.015);
+}
+
+/* 5. Hero dashboard preview card ─────────────────────────── */
+.hero-preview-card {
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.03),
+    0 20px 40px rgba(0,0,0,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.90);
+  border: 1px solid rgba(229, 231, 235, 0.8);
+  border-radius: 24px 24px 0 0;
+  background: #fff;
+}
+
+/* 6. Glassmorphic navbar ──────────────────────────────────── */
+.navbar-glass {
+  background: rgba(255, 245, 247, 0.72) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid rgba(244, 63, 138, 0.10) !important;
+  box-shadow: 0 1px 12px rgba(244, 63, 138, 0.06);
+}
+
+/* 7. Feature card polish ──────────────────────────────────── */
+.feature-card {
+  background: rgba(255, 255, 255, 0.80);
+  border: 1px solid rgba(244, 63, 138, 0.08);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  backdrop-filter: blur(8px);
+}
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 32px rgba(244, 63, 138, 0.12);
+  border-color: rgba(244, 63, 138, 0.25);
+}
+
+/* 8. Entrance animations ─────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animation-delay-100 { animation-delay: 0.10s; }
+.animation-delay-200 { animation-delay: 0.20s; }
+.animation-delay-300 { animation-delay: 0.35s; }
+.animation-delay-400 { animation-delay: 0.50s; }
+.animation-delay-500 { animation-delay: 0.65s; }

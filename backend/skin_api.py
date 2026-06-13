@@ -193,6 +193,40 @@ async def analyze(file: UploadFile = File(...)):
 
     return {"conditions": conditions, "device": DEVICE}
 
+def perform_inference(pil_image):
+    """Internal function to run analysis without HTTP overhead."""
+    global _model, _preprocess, _text_features
+   
+    if not _model_ready:
+        return None
+
+    # Preprocess and Inference
+    image_tensor = _preprocess(pil_image).unsqueeze(0).to(DEVICE)
+    with torch.no_grad():
+        img_f = _model.encode_image(image_tensor)
+        img_f = img_f / img_f.norm(dim=-1, keepdim=True)
+        sims = (img_f @ _text_features.T).squeeze(0)
+
+    sims = sims.view(len(ATTRIBUTES), len(TEMPLATES)).mean(dim=1)
+   
+    # Top-K logic
+    k = min(TOP_K, len(ATTRIBUTES))
+    topk = torch.topk(sims, k=k)
+
+    conditions = []
+    for rank, (score, idx) in enumerate(zip(topk.values.tolist(), topk.indices.tolist()), start=1):
+        label = ATTRIBUTES[idx]
+        conditions.append({
+            "label": label,
+            "display": label,
+            "score": round(score, 4),
+            "rank": rank,
+        })
+    return conditions
+
+def is_model_ready():
+    return _model_ready
+
 
 # ---------------------------------------------------------------------------
 # Entry point

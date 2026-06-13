@@ -46,7 +46,7 @@ export default function ProfilePage() {
     const token = localStorage.getItem("token");
     const currentRole = localStorage.getItem("role");
     setRole(currentRole);
-    
+
     if (!token) {
       router.push(currentRole === "provider" ? "/login/provider" : "/login/customer");
       return;
@@ -164,8 +164,13 @@ export default function ProfilePage() {
       const uploadData = await uploadRes.json();
       const photoUrl = uploadData.url;
 
-      // Update provider profile with photo URL
-      const updateRes = await fetch("http://localhost:8000/provider/profile/photo", {
+      // Update profile with photo URL based on the role
+      const currentRole = localStorage.getItem("role");
+      const endpoint = currentRole === "provider"
+        ? "http://localhost:8000/provider/profile/photo"
+        : "http://localhost:8000/customer/profile/photo";
+
+      const updateRes = await fetch(endpoint, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify({ profile_photo: photoUrl }),
@@ -194,7 +199,7 @@ export default function ProfilePage() {
     setSuccess("");
     try {
       const currentRole = localStorage.getItem("role");
-      
+
       if (currentRole === "provider") {
         // Update provider profile information
         const res = await fetch("http://localhost:8000/provider/profile", {
@@ -306,10 +311,10 @@ export default function ProfilePage() {
     setProfileData((prev) => ({ ...prev, city: location }));
   }, []);
 
-  const displayPhoto = previewUrl || (profileData.profilePhoto 
-    ? (profileData.profilePhoto.startsWith('http') 
-        ? profileData.profilePhoto 
-        : `http://localhost:8000${profileData.profilePhoto}`)
+  const displayPhoto = previewUrl || (profileData.profilePhoto
+    ? (profileData.profilePhoto.startsWith('http')
+      ? profileData.profilePhoto
+      : `http://localhost:8000${profileData.profilePhoto}`)
     : null);
 
   return (
@@ -318,8 +323,8 @@ export default function ProfilePage() {
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-3xl font-bold">Profile Management</h1>
           {profileData.level && (
-            <ProviderLevelBadge 
-              level={profileData.level} 
+            <ProviderLevelBadge
+              level={profileData.level}
               levelInfo={profileData.levelInfo || undefined}
               size="lg"
             />
@@ -347,8 +352,8 @@ export default function ProfilePage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>
-              <Input 
-                id="fullName" 
+              <Input
+                id="fullName"
                 value={profileData.fullName}
                 onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                 placeholder="Enter your full name"
@@ -359,9 +364,9 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
+              <Input
+                id="email"
+                type="email"
                 value={profileData.email}
                 disabled
                 className="bg-muted"
@@ -370,9 +375,9 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input 
-                id="phone" 
-                type="tel" 
+              <Input
+                id="phone"
+                type="tel"
                 value={profileData.phone}
                 onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                 placeholder="Enter 11-digit phone number"
@@ -408,8 +413,8 @@ export default function ProfilePage() {
             )}
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="businessName">Business Name</Label>
-              <Input 
-                id="businessName" 
+              <Input
+                id="businessName"
                 value={profileData.businessName}
                 onChange={(e) => setProfileData({ ...profileData, businessName: e.target.value })}
                 placeholder="Enter your business name"
@@ -436,7 +441,7 @@ export default function ProfilePage() {
               <div className="flex items-center gap-4">
                 <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
                   {displayPhoto ? (
-                    <img 
+                    <img
                       src={displayPhoto}
                       alt="Profile"
                       className="w-full h-full object-cover"
@@ -463,8 +468,8 @@ export default function ProfilePage() {
                   </label>
                   {selectedFile && (
                     <div className="flex items-center gap-2">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={handlePhotoUpload}
                         disabled={uploading}
                         className="flex-1"
@@ -481,8 +486,8 @@ export default function ProfilePage() {
                           </>
                         )}
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => {
                           setSelectedFile(null);
@@ -585,8 +590,8 @@ export default function ProfilePage() {
           <h2 className="text-xl font-semibold border-b pb-4">Account Security</h2>
           <div className="space-y-4">
             {!showChangePassword ? (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full sm:w-auto justify-start"
                 onClick={() => setShowChangePassword(true)}
               >
@@ -658,7 +663,7 @@ export default function ProfilePage() {
             )}
           </div>
         </div>
-        
+
         <div className="flex justify-end gap-4">
           <Button variant="ghost" onClick={() => router.back()}>Cancel</Button>
           <Button className="min-w-[120px]" onClick={handleSave} disabled={loading}>

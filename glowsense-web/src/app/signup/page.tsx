@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { User, Briefcase, Sparkles } from "lucide-react";
+import { User, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function SignupRoleSelectionPage() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center bg-background py-12 px-4">
       <div className="text-center mb-12 space-y-4">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Sparkles className="h-8 w-8" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/5 p-2">
+          <img src="/logo.png" alt="GlowSense AI Logo" className="h-12 w-auto object-contain" />
         </div>
         <h1 className="text-4xl font-bold tracking-tight">Join GlowSense AI</h1>
         <p className="text-lg text-muted-foreground">Choose your account type to get started</p>

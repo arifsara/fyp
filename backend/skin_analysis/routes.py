@@ -19,7 +19,9 @@ from typing import List, Optional
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import skin_api
+from PIL import Image
+import io
 import models
 import auth
 import database
@@ -33,7 +35,7 @@ ML_SERVICE_URL = os.getenv("SKIN_ML_SERVICE_URL", "http://localhost:8001")
 
 # Configure Gemini for skincare recommendations dynamically
 def get_analysis_model():
-    api_key = os.getenv("SkinAnalysisKey") 
+    api_key = "AIzaSyARmR5JDn-kVBOE7pbtwV4MB1aQ7-RFTa8"
     if not api_key:
         print("Warning: 'AnalysisKey' not found in .env. AI recommendations disabled.")
         return None
@@ -83,18 +85,10 @@ def get_current_customer(
 @router.get("/health")
 async def skin_service_health():
     """Check whether the DermLIP ML microservice is ready."""
-    try:
-        client = _get_http_client()
-        resp = await client.get(f"{ML_SERVICE_URL}/health", timeout=5.0)
-        resp.raise_for_status()
-        return {"ml_service": "ready", "detail": resp.json()}
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"ML service unavailable: {str(e)}. "
-                   f"Ensure skin_api.py is running on {ML_SERVICE_URL}."
-        )
-
+    if skin_api.is_model_ready():
+        return {"ml_service": "ready", "mode": "integrated"}
+    return {"ml_service": "loading", "mode": "integrated"}
+    
 
 async def generate_ai_recommendations(conditions: List[dict]) -> dict:
     """
@@ -157,11 +151,11 @@ async def analyze_skin(
     db: Session = Depends(database.get_db),
 ):
     """
-    Upload a skin image → get top conditions from DermLIP.
+    Upload a skin image → get top conditions from DermLIP (Local).
     Then, call Gemini to generate a personalized skincare routine.
-    Results are saved to the database (text results + AI recommendations).
+    Results are saved to the database.
     """
-    # Validate file type early
+    # 1. Validate file type
     allowed_types = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
     if file.content_type not in allowed_types:
         raise HTTPException(
@@ -169,38 +163,37 @@ async def analyze_skin(
             detail=f"Unsupported file type. Please upload a JPEG, PNG, or WebP image."
         )
 
-    # Read image bytes
+    # 2. Read image bytes
     image_bytes = await file.read()
     if len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    # Forward to ML service
+    # 3. RUN LOCAL INFERENCE (The new part)
     try:
-        client = _get_http_client()
-        resp = await client.post(
-            f"{ML_SERVICE_URL}/analyze",
-            files={"file": (file.filename, image_bytes, file.content_type)},
-            timeout=120.0,
-        )
-        if resp.status_code == 503:
-            raise HTTPException(status_code=503, detail="ML model is still loading. Please try again.")
-        resp.raise_for_status()
-        ml_result = resp.json()
+        from PIL import Image
+        import io
+        import skin_api
+        
+        pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        conditions = skin_api.perform_inference(pil_image)
+        
+        if conditions is None:
+            raise HTTPException(status_code=503, detail="AI model is still loading. Please retry in a moment.")
+            
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Could not reach ML service: {str(e)}")
+        print(f"Inference Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
-    conditions = ml_result.get("conditions", [])
-
-    # Step 2: Generate AI Recommendations via Gemini
+    # 4. Generate AI Recommendations via Gemini
     recommendations = await generate_ai_recommendations(conditions)
 
-    # Prepare final result structure
+    # 5. Prepare final result structure
     final_results = {
         "conditions": conditions,
         "recommendations": recommendations
     }
 
-    # Persist results in DB
+    # 6. Persist results in DB
     analysis = models.SkinAnalysis(
         customer_id=current_customer.id,
         results=json.dumps(final_results),

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Label } from "@/components/ui/label";
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -113,7 +113,7 @@ export default function SignupLocation({
           <SelectTrigger id="city">
             <SelectValue placeholder={loading ? "Loading cities..." : "Select your city"} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-white">
             {loading ? (
               <div className="flex items-center justify-center p-4">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

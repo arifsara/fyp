@@ -148,14 +148,14 @@ export default function DashboardPage() {
         return;
       }
 
-      const endpoint = role === "provider" 
+      const endpoint = role === "provider"
         ? "http://localhost:8000/provider/dashboard"
         : "http://localhost:8000/customer/dashboard";
-      
+
       const res = await fetch(endpoint, {
         headers: getAuthHeaders(),
       });
-      
+
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       const data = await res.json();
       setDashboardData(data);
@@ -267,9 +267,9 @@ export default function DashboardPage() {
         <div className="flex items-center gap-6">
           <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
             {dashboardData.customer.profile_picture ? (
-              <img 
-                src={dashboardData.customer.profile_picture.startsWith('http') 
-                  ? dashboardData.customer.profile_picture 
+              <img
+                src={dashboardData.customer.profile_picture.startsWith('http')
+                  ? dashboardData.customer.profile_picture
                   : `http://localhost:8000${dashboardData.customer.profile_picture}`}
                 alt={dashboardData.customer.name}
                 className="w-full h-full object-cover"
@@ -373,19 +373,18 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {dashboardData.bookings.map((booking) => (
-                  <div 
-                    key={booking.id} 
-                    className={`p-4 rounded-xl border-2 transition-colors ${
-                      booking.status === "pending" 
-                        ? "border-yellow-500 bg-yellow-50/50 hover:bg-yellow-50" 
+                  <div
+                    key={booking.id}
+                    className={`p-4 rounded-xl border-2 transition-colors ${booking.status === "pending"
+                        ? "border-yellow-500 bg-yellow-50/50 hover:bg-yellow-50"
                         : booking.status === "confirmed"
-                        ? "border-green-500 bg-green-50/50"
-                        : booking.status === "completed"
-                        ? "border-blue-500 bg-blue-50/50"
-                        : booking.status === "cancelled"
-                        ? "border-red-500 bg-red-50/50"
-                        : "border-border"
-                    }`}
+                          ? "border-green-500 bg-green-50/50"
+                          : booking.status === "completed"
+                            ? "border-blue-500 bg-blue-50/50"
+                            : booking.status === "cancelled"
+                              ? "border-red-500 bg-red-50/50"
+                              : "border-border"
+                      }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
@@ -421,9 +420,9 @@ export default function DashboardPage() {
       <div className="flex items-center gap-6">
         <div className="h-20 w-20 rounded-full bg-primary/20 border-2 border-primary/30 overflow-hidden flex items-center justify-center flex-shrink-0">
           {dashboardData.provider?.profile_picture || dashboardData.provider?.profile_photo ? (
-            <img 
-              src={(dashboardData.provider.profile_picture || dashboardData.provider.profile_photo)?.startsWith('http') 
-                ? (dashboardData.provider.profile_picture || dashboardData.provider.profile_photo) 
+            <img
+              src={(dashboardData.provider.profile_picture || dashboardData.provider.profile_photo)?.startsWith('http')
+                ? (dashboardData.provider.profile_picture || dashboardData.provider.profile_photo)
                 : `http://localhost:8000${dashboardData.provider.profile_picture || dashboardData.provider.profile_photo}`}
               alt={dashboardData.provider.name}
               className="w-full h-full object-cover"
@@ -441,8 +440,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-3xl font-bold">Welcome back, {dashboardData.provider?.name}!</h1>
             {dashboardData.provider?.level && (
-              <ProviderLevelBadge 
-                level={dashboardData.provider.level} 
+              <ProviderLevelBadge
+                level={dashboardData.provider.level}
                 levelInfo={dashboardData.provider.level_info}
                 size="lg"
               />
@@ -629,38 +628,37 @@ export default function DashboardPage() {
                       return 0;
                     })
                     .map((booking) => (
-                    <div 
-                      key={booking.id} 
-                      className={`p-4 rounded-xl border-2 transition-colors ${
-                        booking.status === "pending" 
-                          ? "border-yellow-500 bg-yellow-50/50 hover:bg-yellow-50" 
-                          : "border-border"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sm">{booking.service?.name || "Service"}</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {booking.customer?.full_name || "Customer"}
-                          </p>
+                      <div
+                        key={booking.id}
+                        className={`p-4 rounded-xl border-2 transition-colors ${booking.status === "pending"
+                            ? "border-yellow-500 bg-yellow-50/50 hover:bg-yellow-50"
+                            : "border-border"
+                          }`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-sm">{booking.service?.name || "Service"}</h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {booking.customer?.full_name || "Customer"}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 ${getStatusColor(booking.status)}`}>
+                            {getStatusIcon(booking.status)}
+                            {booking.status}
+                          </span>
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 ${getStatusColor(booking.status)}`}>
-                          {getStatusIcon(booking.status)}
-                          {booking.status}
-                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(booking.booking_date).toLocaleDateString()} at {new Date(booking.booking_date).toLocaleTimeString()}
+                        </p>
+                        {booking.status === "pending" && (
+                          <Link href="/dashboard/bookings">
+                            <Button size="sm" variant="outline" className="mt-2 w-full text-yellow-700 border-yellow-500 hover:bg-yellow-100">
+                              Review Booking
+                            </Button>
+                          </Link>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(booking.booking_date).toLocaleDateString()} at {new Date(booking.booking_date).toLocaleTimeString()}
-                      </p>
-                      {booking.status === "pending" && (
-                        <Link href="/dashboard/bookings">
-                          <Button size="sm" variant="outline" className="mt-2 w-full text-yellow-700 border-yellow-500 hover:bg-yellow-100">
-                            Review Booking
-                          </Button>
-                        </Link>
-                      )}
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </div>
@@ -691,7 +689,7 @@ export default function DashboardPage() {
                 {dashboardData.portfolio_items.map((item) => (
                   <div key={item.id} className="aspect-square rounded-xl overflow-hidden border border-border">
                     {item.image_url ? (
-                      <img 
+                      <img
                         src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
                         alt={item.title}
                         className="w-full h-full object-cover"

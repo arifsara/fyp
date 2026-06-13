@@ -65,34 +65,34 @@ export default function AdminLoginPage() {
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-300">Admin Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
+              <Input
+                id="email"
+                type="email"
                 placeholder="adminglowsense@gmail.com"
                 className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-600 focus:ring-red-500"
-                value={formData.email} 
-                required 
-                onChange={handleChange} 
+                value={formData.email}
+                required
+                onChange={handleChange}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password" title="password" className="text-slate-300">Security Password</Label>
-              <Input 
-                id="password" 
-                type="password" 
+              <Input
+                id="password"
+                type="password"
                 className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-600 focus:ring-red-500"
-                value={formData.password} 
-                required 
-                onChange={handleChange} 
+                value={formData.password}
+                required
+                onChange={handleChange}
               />
             </div>
 
-            <Button 
-              className="w-full h-12 text-lg bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-900/20" 
-              type="submit" 
+            <Button
+              className="w-full h-12 text-lg bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-900/20"
+              type="submit"
               disabled={loading}
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Verify Identity"}

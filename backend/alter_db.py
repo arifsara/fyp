@@ -2,7 +2,7 @@ import os
 from sqlalchemy import create_engine, text
 
 # Get URL from env or use default
-url = os.getenv("DATABASE_URL", "postgresql://postgres:18220@localhost:5432/glowsense_db")
+url = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/glowsense_db")
 engine = create_engine(url)
 
 try:

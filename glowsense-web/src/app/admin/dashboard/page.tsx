@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Star, 
-  Users, 
-  UserCheck, 
-  MessageSquare, 
+import {
+  Star,
+  Users,
+  UserCheck,
+  MessageSquare,
   TrendingUp,
   Search,
   Calendar,
@@ -102,28 +102,28 @@ export default function AdminDashboardPage() {
   const { showAlert, showConfirm } = useCustomAlert();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"feedback" | "providers" | "customers" | "bookings" | "standby">("feedback");
-  
+
   const [stats, setStats] = useState<AdminStats>({
     total_ratings: 0,
     average_rating: 0,
     total_providers: 0,
     total_customers: 0
   });
-  
+
   const [ratings, setRatings] = useState<AdminRatingItem[]>([]);
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [standbyRequests, setStandbyRequests] = useState<any[]>([]);
-  
+
   const [bookingStatusFilter, setBookingStatusFilter] = useState("all");
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
   const [isStandbyModalOpen, setIsStandbyModalOpen] = useState(false);
-  const [selectedStandbyBooking, setSelectedStandbyBooking] = useState<{id: number, price: string} | null>(null);
+  const [selectedStandbyBooking, setSelectedStandbyBooking] = useState<{ id: number, price: string } | null>(null);
 
   useEffect(() => {
     fetchInitialData();
@@ -214,11 +214,11 @@ export default function AdminDashboardPage() {
       console.error("Error fetching bookings:", err);
     }
   };
-  
+
   const fetchStandbyRequests = async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    
+
     try {
       const res = await fetch("http://localhost:8000/admin/standby/active", {
         headers: { Authorization: `Bearer ${token}` }
@@ -231,19 +231,19 @@ export default function AdminDashboardPage() {
       console.error("Error fetching standby requests:", err);
     }
   };
-  
+
   const handleAssignProvider = async (bookingId: number, providerId: number) => {
     const token = localStorage.getItem("token");
     try {
       const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/assign`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ provider_id: providerId })
       });
-      
+
       if (res.ok) {
         showAlert("Provider assigned successfully");
         fetchStandbyRequests();
@@ -256,17 +256,17 @@ export default function AdminDashboardPage() {
       console.error("Assign error:", err);
     }
   };
-  
+
   const handleTriggerRefund = async (bookingId: number) => {
     if (!(await showConfirm("Are you sure you want to trigger a manual refund for this standby request?"))) return;
-    
+
     const token = localStorage.getItem("token");
     try {
       const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/refund`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       if (res.ok) {
         showAlert("Refund processed successfully");
         fetchStandbyRequests();
@@ -310,51 +310,51 @@ export default function AdminDashboardPage() {
   };
 
   const filteredRatings = ratings.filter(r => {
-    const matchesSearch = 
+    const matchesSearch =
       r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.provider_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.provider_business?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.comment?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const ratingDate = new Date(r.created_at);
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
     if (end) end.setHours(23, 59, 59, 999);
-    
+
     const matchesDate = (!start || ratingDate >= start) && (!end || ratingDate <= end);
     return matchesSearch && matchesDate;
   });
 
-  const filteredProviders = providers.filter(p => 
+  const filteredProviders = providers.filter(p =>
     p.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.business_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     c.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredBookings = bookings.filter(b => {
-    const matchesSearch = 
+    const matchesSearch =
       b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.provider_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.provider_business?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.service_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     // Status can be in either 'status' or 'booking_status'
     const currentStatus = b.booking_status || b.status;
     const matchesStatus = bookingStatusFilter === "all" || currentStatus === bookingStatusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
   const getStatusBadgeConfig = (status: string | null) => {
     const s = status?.toLowerCase() || "pending";
-    switch(s) {
+    switch (s) {
       case 'confirmed': return "bg-emerald-100 text-emerald-800";
       case 'completed': return "bg-blue-100 text-blue-800";
       case 'cancelled':
@@ -473,53 +473,48 @@ export default function AdminDashboardPage() {
 
         {/* Tab Switcher */}
         <div className="flex flex-wrap items-center gap-2 mb-6 p-1 bg-slate-200/50 rounded-xl w-fit">
-          <button 
-            onClick={() => {setActiveTab("feedback"); setSearchTerm("");}}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "feedback" 
-                ? "bg-white text-slate-900 shadow-sm" 
+          <button
+            onClick={() => { setActiveTab("feedback"); setSearchTerm(""); }}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "feedback"
+                ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             All Feedback
           </button>
-          <button 
-            onClick={() => {setActiveTab("providers"); setSearchTerm("");}}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "providers" 
-                ? "bg-white text-slate-900 shadow-sm" 
+          <button
+            onClick={() => { setActiveTab("providers"); setSearchTerm(""); }}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "providers"
+                ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Service Providers
           </button>
-          <button 
-            onClick={() => {setActiveTab("customers"); setSearchTerm("");}}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "customers" 
-                ? "bg-white text-slate-900 shadow-sm" 
+          <button
+            onClick={() => { setActiveTab("customers"); setSearchTerm(""); }}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "customers"
+                ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Customers
           </button>
-          <button 
-            onClick={() => {setActiveTab("bookings"); setSearchTerm("");}}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "bookings" 
-                ? "bg-white text-slate-900 shadow-sm" 
+          <button
+            onClick={() => { setActiveTab("bookings"); setSearchTerm(""); }}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "bookings"
+                ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             All Bookings
           </button>
-          <button 
-            onClick={() => {setActiveTab("standby"); setSearchTerm("");}}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "standby" 
-                ? "bg-white text-slate-900 shadow-sm" 
+          <button
+            onClick={() => { setActiveTab("standby"); setSearchTerm(""); }}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "standby"
+                ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Standby Requests
           </button>
@@ -535,41 +530,41 @@ export default function AdminDashboardPage() {
               {activeTab === "bookings" && "Comprehensive Booking Tracker"}
               {activeTab === "standby" && "Active Standby & Cancellation Management"}
             </CardTitle>
-            
+
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
               <div className="relative w-full sm:w-[300px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input 
-                  placeholder={`Search ${activeTab}...`} 
+                <Input
+                  placeholder={`Search ${activeTab}...`}
                   className="pl-9 bg-white border-slate-200 focus:ring-blue-500"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              
+
               {activeTab === "feedback" && (
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 text-slate-600">
                     <Calendar className="h-4 w-4 mr-2 text-slate-400" />
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       className="bg-transparent border-none text-xs h-9 focus:outline-none"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                     />
                     <span className="mx-1 text-slate-300">to</span>
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       className="bg-transparent border-none text-xs h-9 focus:outline-none"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
                     />
                   </div>
                   {(startDate || endDate) && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => {setStartDate(""); setEndDate("");}}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setStartDate(""); setEndDate(""); }}
                       className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
                     >
                       Clear
@@ -579,7 +574,7 @@ export default function AdminDashboardPage() {
               )}
               {activeTab === "bookings" && (
                 <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2">
-                  <select 
+                  <select
                     className="bg-transparent border-none text-xs h-9 focus:outline-none font-medium text-slate-600"
                     value={bookingStatusFilter}
                     onChange={(e) => setBookingStatusFilter(e.target.value)}
@@ -628,9 +623,9 @@ export default function AdminDashboardPage() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-0.5">
                               {[...Array(5)].map((_, i) => (
-                                <Star 
-                                  key={i} 
-                                  className={`h-4 w-4 ${i < rating.rating ? 'text-amber-400 fill-current' : 'text-slate-200'}`} 
+                                <Star
+                                  key={i}
+                                  className={`h-4 w-4 ${i < rating.rating ? 'text-amber-400 fill-current' : 'text-slate-200'}`}
                                 />
                               ))}
                             </div>
@@ -673,7 +668,7 @@ export default function AdminDashboardPage() {
                               <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
                                 {p.full_name?.charAt(0)}
                               </div>
-                              <div 
+                              <div
                                 className="cursor-pointer group"
                                 onClick={() => router.push(`/admin/provider/${p.id}`)}
                               >
@@ -757,7 +752,7 @@ export default function AdminDashboardPage() {
                               <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold">
                                 {c.full_name?.charAt(0)}
                               </div>
-                              <div 
+                              <div
                                 className="cursor-pointer group"
                                 onClick={() => router.push(`/admin/customer/${c.id}`)}
                               >
@@ -781,8 +776,8 @@ export default function AdminDashboardPage() {
                     </tbody>
                   </>
                 )}
-                  {/* BOOKINGS VIEW */}
-                  {activeTab === "bookings" && (
+                {/* BOOKINGS VIEW */}
+                {activeTab === "bookings" && (
                   <>
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold">
@@ -808,7 +803,7 @@ export default function AdminDashboardPage() {
                           <td className="px-6 py-4 text-sm text-slate-600">
                             <div className="flex flex-col">
                               <span className="font-medium">{new Date(b.slot_date || b.booking_date).toLocaleDateString()}</span>
-                              <span className="text-xs text-slate-400">{new Date(b.slot_date || b.booking_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                              <span className="text-xs text-slate-400">{new Date(b.slot_date || b.booking_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">

@@ -84,9 +84,12 @@ export default function DashboardLayout({
         <div className="flex flex-col h-full">
           {/* Sidebar Header */}
           <div className="p-6 flex items-center justify-between border-b border-border/50">
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
-              GlowSense AI
-            </span>
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="GlowSense AI Logo" className="h-8 w-auto object-contain" />
+              <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
+                GlowSense AI
+              </span>
+            </div>
             <button
               onClick={() => setSidebarOpen(false)}
               className="md:hidden p-2 hover:bg-muted rounded-lg"
