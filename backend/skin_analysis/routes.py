@@ -35,7 +35,7 @@ ML_SERVICE_URL = os.getenv("SKIN_ML_SERVICE_URL", "http://localhost:8001")
 
 # Configure Gemini for skincare recommendations dynamically
 def get_analysis_model():
-    api_key = "AIzaSyARmR5JDn-kVBOE7pbtwV4MB1aQ7-RFTa8"
+    api_key = os.getenv("SkinAnalysisKey")
     if not api_key:
         print("Warning: 'AnalysisKey' not found in .env. AI recommendations disabled.")
         return None
