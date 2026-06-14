@@ -21,7 +21,7 @@ COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install "numpy<2" --force-reinstall
+    pip install --no-cache-dir "numpy==1.26.4" --force-reinstall
 
 COPY --chown=user . .
 
