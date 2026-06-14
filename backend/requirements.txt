@@ -1,4 +1,5 @@
 numpy==1.26.4
+"numpy<2"
 fastapi
 uvicorn[standard]
 sqlalchemy
