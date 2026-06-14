@@ -44,7 +44,7 @@ export default function SkinAnalysisUploader({
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  
+
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,16 +111,16 @@ export default function SkinAnalysisUploader({
 
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
-    
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext("2d");
-    
+
     if (context) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
+
       canvas.toBlob((blob) => {
         if (blob) {
           const capturedFile = new File([blob], `capture_${Date.now()}.jpg`, { type: "image/jpeg" });
@@ -179,7 +179,7 @@ export default function SkinAnalysisUploader({
 
   return (
     <div className="space-y-6">
-      
+
       {/* 1. Initial State: Two Action Buttons */}
       {mode === "initial" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -261,7 +261,7 @@ export default function SkinAnalysisUploader({
             muted
             className={`w-full h-full object-cover ${isStreaming ? "opacity-100" : "opacity-0"} transition-opacity duration-500`}
           />
-          
+
           {!isStreaming && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -279,7 +279,7 @@ export default function SkinAnalysisUploader({
               >
                 <X className="h-5 w-5" />
               </Button>
-              
+
               <button
                 onClick={capturePhoto}
                 className="h-16 w-16 rounded-full border-4 border-white bg-primary/80 hover:bg-primary transition-all active:scale-95 shadow-lg"
@@ -288,7 +288,7 @@ export default function SkinAnalysisUploader({
               <div className="w-10" /> {/* Spacer to balance */}
             </div>
           )}
-          
+
           <canvas ref={canvasRef} className="hidden" />
         </div>
       )}
@@ -305,49 +305,49 @@ export default function SkinAnalysisUploader({
             />
             <Button
               size="icon"
-              variant="destructive"
+              variant="secondary"
               className="absolute top-3 right-3 h-8 w-8 rounded-full shadow-lg"
               onClick={clearSelection}
             >
               <X className="h-4 w-4" />
             </Button>
-            
+
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-3">
-               <p className="text-white text-xs font-medium flex items-center gap-2">
+              <p className="text-white text-xs font-medium flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-emerald-400" />
                 Image Ready: {file?.name ?? "Captured Photo"}
-               </p>
+              </p>
             </div>
           </div>
 
           <div className="flex gap-3">
-             <Button
-                variant="outline"
-                className="flex-1 rounded-xl"
-                onClick={clearSelection}
-                disabled={loading}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Retake
-              </Button>
-              
-              <Button
-                className="flex-[2] bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold rounded-xl shadow-md shadow-primary/20 transition-all duration-200"
-                disabled={loading}
-                onClick={handleAnalyze}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analyzing…
-                  </>
-                ) : (
-                  <>
-                    <ScanFace className="mr-2 h-4 w-4" />
-                    Run AI Analysis
-                  </>
-                )}
-              </Button>
+            <Button
+              variant="outline"
+              className="flex-1 rounded-xl"
+              onClick={clearSelection}
+              disabled={loading}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retake
+            </Button>
+
+            <Button
+              className="flex-[2] bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold rounded-xl shadow-md shadow-primary/20 transition-all duration-200"
+              disabled={loading}
+              onClick={handleAnalyze}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  <ScanFace className="mr-2 h-4 w-4" />
+                  Run AI Analysis
+                </>
+              )}
+            </Button>
           </div>
         </div>
       )}
