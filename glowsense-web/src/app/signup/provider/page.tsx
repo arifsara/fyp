@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
@@ -40,7 +41,7 @@ export default function ProviderSignupPage() {
         
         // Let's attempt to use it specifically as a login intent first just in case they're already registered
         try {
-          const res = await fetch("http://localhost:8000/auth/google", {
+          const res = await fetch(`${API_URL}/auth/google`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -56,7 +57,7 @@ export default function ProviderSignupPage() {
              // If already registered, seamlessly log them in and redirect to dashboard
              if (data.already_registered) {
                 // To get the token we need to re-ping with login intent
-                const loginRes = await fetch("http://localhost:8000/auth/google", {
+                const loginRes = await fetch(`${API_URL}/auth/google`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -107,7 +108,7 @@ export default function ProviderSignupPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("http://localhost:8000/upload/documents", {
+      const res = await fetch(`${API_URL}/upload/documents`, {
         method: "POST",
         body: formData,
       });
@@ -244,7 +245,7 @@ export default function ProviderSignupPage() {
 
       console.log("Provider signup attempt:", { ...signupData, password: "***" }); // Debug log
 
-      const res = await fetch("http://localhost:8000/signup/provider", {
+      const res = await fetch(`${API_URL}/signup/provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(signupData),

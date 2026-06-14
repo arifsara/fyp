@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,7 @@ export default function PortfolioManagementPage() {
 
   const fetchPortfolio = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/provider/portfolio`, {
+      const res = await fetch(`${API_URL}/provider/portfolio`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch portfolio");
@@ -96,7 +97,7 @@ export default function PortfolioManagementPage() {
 
   const fetchServices = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/provider/services`, {
+      const res = await fetch(`${API_URL}/provider/services`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch services");
@@ -111,7 +112,7 @@ export default function PortfolioManagementPage() {
     const formData = new FormData();
     formData.append("file", file);
     const token = localStorage.getItem("token");
-    const res = await fetch("http://localhost:8000/upload/portfolio", {
+    const res = await fetch(`${API_URL}/upload/portfolio`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -142,7 +143,7 @@ export default function PortfolioManagementPage() {
       
       if (editingPortfolio) {
         // Update existing
-        const res = await fetch(`http://localhost:8000/provider/portfolio/${editingPortfolio}`, {
+        const res = await fetch(`${API_URL}/provider/portfolio/${editingPortfolio}`, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify(payload),
@@ -150,7 +151,7 @@ export default function PortfolioManagementPage() {
         if (!res.ok) throw new Error("Failed to update portfolio");
       } else {
         // Create new
-        const res = await fetch(`http://localhost:8000/provider/portfolio`, {
+        const res = await fetch(`${API_URL}/provider/portfolio`, {
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify(payload),
@@ -172,7 +173,7 @@ export default function PortfolioManagementPage() {
   const handleDeletePortfolio = async (id: number) => {
     if (!(await showConfirm("Delete this portfolio item?"))) return;
     try {
-      const res = await fetch(`http://localhost:8000/provider/portfolio/${id}`, {
+      const res = await fetch(`${API_URL}/provider/portfolio/${id}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
@@ -187,14 +188,14 @@ export default function PortfolioManagementPage() {
     setLoading(true);
     try {
       if (editingService) {
-        const res = await fetch(`http://localhost:8000/provider/services/${editingService}`, {
+        const res = await fetch(`${API_URL}/provider/services/${editingService}`, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify(serviceForm),
         });
         if (!res.ok) throw new Error("Failed to update service");
       } else {
-        const res = await fetch(`http://localhost:8000/provider/services`, {
+        const res = await fetch(`${API_URL}/provider/services`, {
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify(serviceForm),
@@ -215,7 +216,7 @@ export default function PortfolioManagementPage() {
   const handleDeleteService = async (id: number) => {
     if (!(await showConfirm("Delete this service?"))) return;
     try {
-      const res = await fetch(`http://localhost:8000/provider/services/${id}`, {
+      const res = await fetch(`${API_URL}/provider/services/${id}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
@@ -332,7 +333,7 @@ export default function PortfolioManagementPage() {
                   {item.image_url ? (
                     <div className="aspect-video bg-muted overflow-hidden">
                       <img 
-                        src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
+                        src={item.image_url.startsWith('http') ? item.image_url : `${API_URL}${item.image_url}`}
                         alt={item.title}
                         className="w-full h-full object-cover"
                         onError={(e) => {
@@ -719,7 +720,7 @@ export default function PortfolioManagementPage() {
                     const startDate = new Date(timeSlotForm.start_date + "T00:00:00Z");
                     const endDate = new Date(timeSlotForm.end_date + "T23:59:59Z");
                     
-                    const res = await fetch(`http://localhost:8000/provider/services/${managingTimeSlots}/time-slots/bulk`, {
+                    const res = await fetch(`${API_URL}/provider/services/${managingTimeSlots}/time-slots/bulk`, {
                       method: "POST",
                       headers: getAuthHeaders(),
                       body: JSON.stringify({

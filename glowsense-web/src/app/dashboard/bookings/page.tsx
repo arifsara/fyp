@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -80,7 +81,7 @@ export default function BookingsPage() {
 
   const fetchBookings = async () => {
     try {
-      const res = await fetch("http://localhost:8000/provider/bookings", {
+      const res = await fetch(`${API_URL}/provider/bookings`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch bookings");
@@ -96,7 +97,7 @@ export default function BookingsPage() {
   const fetchPayments = async () => {
     setLoadingPayments(true);
     try {
-      const res = await fetch("http://localhost:8000/provider/payments", {
+      const res = await fetch(`${API_URL}/provider/payments`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch payments");
@@ -111,7 +112,7 @@ export default function BookingsPage() {
 
   const updateBookingStatus = async (bookingId: number, status: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/provider/bookings/${bookingId}/status`, {
+      const res = await fetch(`${API_URL}/provider/bookings/${bookingId}/status`, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify({ status }),
@@ -131,7 +132,7 @@ export default function BookingsPage() {
   const cancelWithStandby = async (bookingId: number) => {
     if (!(await showConfirm("Are you sure you want to cancel this booking? The customer will be offered standby providers."))) return;
     try {
-      const res = await fetch(`http://localhost:8000/standby/provider/cancel-booking/${bookingId}`, {
+      const res = await fetch(`${API_URL}/standby/provider/cancel-booking/${bookingId}`, {
         method: "PUT",
         headers: getAuthHeaders(),
       });
@@ -155,7 +156,7 @@ export default function BookingsPage() {
       : "Reject this standby booking? The customer will be able to pick another provider.";
     if (!(await showConfirm(confirmMsg))) return;
     try {
-      const res = await fetch("http://localhost:8000/standby/provider/respond", {
+      const res = await fetch(`${API_URL}/standby/provider/respond`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({ booking_id: bookingId, action }),

@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { ScanFace, History, ChevronDown, ChevronUp, AlertTriangle, Wifi, CheckCircle } from "lucide-react";
@@ -32,7 +33,7 @@ interface HistoryEntry {
   created_at: string;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? API_URL;
 
 export default function AnalysisPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);

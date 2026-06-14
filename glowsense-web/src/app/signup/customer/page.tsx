@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
@@ -35,7 +36,7 @@ export default function CustomerSignupPage() {
         
         // Let's attempt to use it specifically as a login intent first just in case they're already registered
         try {
-          const res = await fetch("http://localhost:8000/auth/google", {
+          const res = await fetch(`${API_URL}/auth/google`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -51,7 +52,7 @@ export default function CustomerSignupPage() {
              // If already registered, seamlessly log them in and redirect to dashboard
              if (data.already_registered) {
                 // To get the token we need to re-ping with login intent
-                const loginRes = await fetch("http://localhost:8000/auth/google", {
+                const loginRes = await fetch(`${API_URL}/auth/google`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -180,7 +181,7 @@ export default function CustomerSignupPage() {
 
       console.log("Signup attempt:", { ...signupData, password: "***" }); // Debug log
 
-      const res = await fetch("http://localhost:8000/signup/customer", {
+      const res = await fetch(`${API_URL}/signup/customer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(signupData),

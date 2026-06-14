@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function AIChatInterface({ userId, userName }: AIChatInterfacePro
         }
 
         const token = localStorage.getItem("token");
-        const res = await fetch(`http://localhost:8000/rag/history/session/${storedSession}?user_id=${userId}`, {
+        const res = await fetch(`${API_URL}/rag/history/session/${storedSession}?user_id=${userId}`, {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
@@ -102,7 +103,7 @@ export default function AIChatInterface({ userId, userName }: AIChatInterfacePro
     setMessages((prev) => [...prev, newUserMessage]);
 
     try {
-      const response = await fetch("http://localhost:8000/rag/chat", {
+      const response = await fetch(`${API_URL}/rag/chat`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({

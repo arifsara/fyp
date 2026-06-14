@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect, useRef } from "react";
 import { Label } from "@/components/ui/label";
@@ -55,7 +56,7 @@ export default function SignupLocation({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("http://localhost:8000/pakistan-cities", {
+      const res = await fetch(`${API_URL}/pakistan-cities`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ country: "Pakistan" }),

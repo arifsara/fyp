@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -60,7 +61,7 @@ export default function AdminCustomerDetailPage() {
 
     try {
       // 1. Fetch Profile Details
-      const detailsRes = await fetch(`http://localhost:8000/admin/customer/${id}`, {
+      const detailsRes = await fetch(`${API_URL}/admin/customer/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (detailsRes.ok) {
@@ -69,7 +70,7 @@ export default function AdminCustomerDetailPage() {
       }
 
       // 2. Fetch specific History
-      const bookingsRes = await fetch(`http://localhost:8000/admin/bookings?customer_id=${id}`, {
+      const bookingsRes = await fetch(`${API_URL}/admin/bookings?customer_id=${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (bookingsRes.ok) {

@@ -1121,23 +1121,13 @@ export default function ARTryOn() {
   const loadYOLO = useCallback(async () => {
     setYoloStatus("loading");
     try {
-      // Requires: npm install onnxruntime-web
-      // Model file: /public/models/yolov8n-face.onnx
-      // Export:     YOLO('yoloface.pt').export(format='onnx')
-      // const ort = await import("onnxruntime-web");
-      // const session = await (ort as any).InferenceSession.create(
-      //   "/models/yolov8n-face.onnx",
-      //   { executionProviders: ["wasm"] }
-      // );
-      yoloRef.current = { ort, session };
-      setYoloStatus("ready");
-      console.log("[YOLO] Model loaded ✓");
+      // Browser-side YOLO disabled — using MediaPipe face detection instead
+      throw new Error("Browser YOLO disabled; using MediaPipe fallback");
     } catch (e) {
       console.warn("[YOLO] Load failed — falling back to MediaPipe face detection:", e);
       setYoloStatus("error");
     }
   }, []);
-
   // ── YOLO polling loop (every 300 ms) ─────────────────────────
   const startYOLOLoop = useCallback(() => {
     yoloTimerRef.current = setInterval(async () => {

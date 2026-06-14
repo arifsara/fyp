@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export default function RatingModal({
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:8000/ratings/create", {
+      const res = await fetch(`${API_URL}/ratings/create`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({

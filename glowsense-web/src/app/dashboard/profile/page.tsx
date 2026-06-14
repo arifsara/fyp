@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -68,7 +69,7 @@ export default function ProfilePage() {
     try {
       const currentRole = localStorage.getItem("role");
       if (currentRole === "provider") {
-        const res = await fetch("http://localhost:8000/provider/profile", {
+        const res = await fetch(`${API_URL}/provider/profile`, {
           headers: getAuthHeaders(),
         });
         if (!res.ok) throw new Error("Failed to fetch profile");
@@ -89,7 +90,7 @@ export default function ProfilePage() {
           budgetRange: "",
         });
       } else if (currentRole === "customer") {
-        const res = await fetch("http://localhost:8000/customer/profile", {
+        const res = await fetch(`${API_URL}/customer/profile`, {
           headers: getAuthHeaders(),
         });
         if (!res.ok) throw new Error("Failed to fetch profile");
@@ -148,7 +149,7 @@ export default function ProfilePage() {
       formData.append("file", selectedFile);
 
       // Upload file
-      const uploadRes = await fetch("http://localhost:8000/upload/profile", {
+      const uploadRes = await fetch(`${API_URL}/upload/profile`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -167,8 +168,8 @@ export default function ProfilePage() {
       // Update profile with photo URL based on the role
       const currentRole = localStorage.getItem("role");
       const endpoint = currentRole === "provider"
-        ? "http://localhost:8000/provider/profile/photo"
-        : "http://localhost:8000/customer/profile/photo";
+        ? `${API_URL}/provider/profile/photo`
+        : `${API_URL}/customer/profile/photo`;
 
       const updateRes = await fetch(endpoint, {
         method: "PUT",
@@ -202,7 +203,7 @@ export default function ProfilePage() {
 
       if (currentRole === "provider") {
         // Update provider profile information
-        const res = await fetch("http://localhost:8000/provider/profile", {
+        const res = await fetch(`${API_URL}/provider/profile`, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -220,7 +221,7 @@ export default function ProfilePage() {
         }
       } else if (currentRole === "customer") {
         // Update customer profile information including preferences
-        const res = await fetch("http://localhost:8000/customer/profile", {
+        const res = await fetch(`${API_URL}/customer/profile`, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -282,7 +283,7 @@ export default function ProfilePage() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/provider/change-password", {
+      const res = await fetch(`${API_URL}/provider/change-password`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -314,7 +315,7 @@ export default function ProfilePage() {
   const displayPhoto = previewUrl || (profileData.profilePhoto
     ? (profileData.profilePhoto.startsWith('http')
       ? profileData.profilePhoto
-      : `http://localhost:8000${profileData.profilePhoto}`)
+      : `${API_URL}${profileData.profilePhoto}`)
     : null);
 
   return (

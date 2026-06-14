@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,7 +66,7 @@ function BookServicePageContent() {
 
   const fetchServiceDetails = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/providers/${providerId}`);
+      const res = await fetch(`${API_URL}/providers/${providerId}`);
       if (!res.ok) throw new Error("Failed to fetch provider details");
       const data = await res.json();
       
@@ -91,7 +92,7 @@ function BookServicePageContent() {
     setError("");
     try {
       const res = await fetch(
-        `http://localhost:8000/services/${serviceId}/available-slots?date=${selectedDate}`
+        `${API_URL}/services/${serviceId}/available-slots?date=${selectedDate}`
       );
       if (!res.ok) {
         const errorData = await res.json();
@@ -126,7 +127,7 @@ function BookServicePageContent() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:8000/bookings", {
+      const res = await fetch(`${API_URL}/bookings`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({

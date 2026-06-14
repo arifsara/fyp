@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -79,7 +80,7 @@ function PaymentPageContent() {
   const fetchTransactions = async () => {
     setLoadingTransactions(true);
     try {
-      const res = await fetch("http://localhost:8000/customer/payments", {
+      const res = await fetch(`${API_URL}/customer/payments`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch transactions");

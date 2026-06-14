@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -36,7 +37,7 @@ export default function AIAssistantPage() {
       }
 
       if (role === "customer") {
-        const res = await fetch("http://localhost:8000/customer/profile", {
+        const res = await fetch(`${API_URL}/customer/profile`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -51,7 +52,7 @@ export default function AIAssistantPage() {
           console.error("Failed to fetch customer profile:", res.status, errorData);
         }
       } else if (role === "provider") {
-        const res = await fetch("http://localhost:8000/provider/profile", {
+        const res = await fetch(`${API_URL}/provider/profile`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

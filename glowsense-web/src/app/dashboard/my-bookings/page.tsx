@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -81,7 +82,7 @@ export default function MyBookingsPage() {
         throw new Error("No authentication token found. Please log in again.");
       }
 
-      const res = await fetch("http://localhost:8000/customer/bookings", {
+      const res = await fetch(`${API_URL}/customer/bookings`, {
         headers: getAuthHeaders(),
       });
       
@@ -146,7 +147,7 @@ export default function MyBookingsPage() {
 
   const checkRatingStatus = async (bookingId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/ratings/booking/${bookingId}/check`, {
+      const res = await fetch(`${API_URL}/ratings/booking/${bookingId}/check`, {
         headers: getAuthHeaders(),
       });
       if (res.ok) {
@@ -167,7 +168,7 @@ export default function MyBookingsPage() {
   const openStandbyModal = async (bookingId: number) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:8000/standby/providers/${bookingId}`, {
+      const res = await fetch(`${API_URL}/standby/providers/${bookingId}`, {
         headers: getAuthHeaders(),
       });
       if (res.ok) {
@@ -187,7 +188,7 @@ export default function MyBookingsPage() {
   const cancelBooking = async (bookingId: number) => {
     if (!(await showConfirm("Are you sure you want to cancel this booking?"))) return;
     try {
-      const res = await fetch(`http://localhost:8000/customer/bookings/${bookingId}/cancel`, {
+      const res = await fetch(`${API_URL}/customer/bookings/${bookingId}/cancel`, {
         method: "PUT",
         headers: getAuthHeaders(),
       });

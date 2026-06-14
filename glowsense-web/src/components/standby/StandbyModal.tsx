@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -50,7 +51,7 @@ export default function StandbyModal({
     setSelectingId(providerId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/standby/select-provider", {
+      const res = await fetch(`${API_URL}/standby/select-provider`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,7 +85,7 @@ export default function StandbyModal({
     setRefunding(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/standby/refund", {
+      const res = await fetch(`${API_URL}/standby/refund`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

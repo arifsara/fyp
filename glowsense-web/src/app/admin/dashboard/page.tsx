@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -146,7 +147,7 @@ export default function AdminDashboardPage() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/admin/ratings/all", {
+      const res = await fetch(`${API_URL}/admin/ratings/all`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -169,7 +170,7 @@ export default function AdminDashboardPage() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/admin/providers", {
+      const res = await fetch(`${API_URL}/admin/providers`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -186,7 +187,7 @@ export default function AdminDashboardPage() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/admin/customers", {
+      const res = await fetch(`${API_URL}/admin/customers`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -203,7 +204,7 @@ export default function AdminDashboardPage() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/admin/bookings", {
+      const res = await fetch(`${API_URL}/admin/bookings`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -220,7 +221,7 @@ export default function AdminDashboardPage() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/admin/standby/active", {
+      const res = await fetch(`${API_URL}/admin/standby/active`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -235,7 +236,7 @@ export default function AdminDashboardPage() {
   const handleAssignProvider = async (bookingId: number, providerId: number) => {
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/assign`, {
+      const res = await fetch(`${API_URL}/admin/standby/${bookingId}/assign`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -262,7 +263,7 @@ export default function AdminDashboardPage() {
 
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:8000/admin/standby/${bookingId}/refund`, {
+      const res = await fetch(`${API_URL}/admin/standby/${bookingId}/refund`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -285,7 +286,7 @@ export default function AdminDashboardPage() {
 
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:8000/admin/provider/${id}`, {
+      const res = await fetch(`${API_URL}/admin/provider/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });

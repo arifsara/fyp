@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect, useRef } from "react";
 import { Bell, X, AlertTriangle, UserCheck, DollarSign, Clock } from "lucide-react";
@@ -59,8 +60,8 @@ export default function NotificationBell({ role, onViewStandby }: NotificationBe
     try {
       const endpoint =
         role === "provider"
-          ? "http://localhost:8000/standby/notifications/provider/unread-count"
-          : "http://localhost:8000/standby/notifications/customer/unread-count";
+          ? `${API_URL}/standby/notifications/provider/unread-count`
+          : `${API_URL}/standby/notifications/customer/unread-count`;
       const res = await fetch(endpoint, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -78,8 +79,8 @@ export default function NotificationBell({ role, onViewStandby }: NotificationBe
     try {
       const endpoint =
         role === "provider"
-          ? "http://localhost:8000/standby/notifications/provider"
-          : "http://localhost:8000/standby/notifications/customer";
+          ? `${API_URL}/standby/notifications/provider`
+          : `${API_URL}/standby/notifications/customer`;
       const res = await fetch(endpoint, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -94,7 +95,7 @@ export default function NotificationBell({ role, onViewStandby }: NotificationBe
 
   const markAsRead = async (id: number) => {
     try {
-      await fetch(`http://localhost:8000/standby/notifications/${id}/read`, {
+      await fetch(`${API_URL}/standby/notifications/${id}/read`, {
         method: "PUT",
         headers: getAuthHeaders(),
       });

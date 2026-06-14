@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, ImagePlus, X, Loader2, ScanFace, Camera, RefreshCw } from "lucide-react";
@@ -29,7 +30,7 @@ interface SkinAnalysisUploaderProps {
   onError: (msg: string) => void;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? API_URL;
 
 type Mode = "initial" | "upload" | "camera" | "preview";
 

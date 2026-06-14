@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -66,8 +67,8 @@ export default function PaymentsPage() {
     try {
       const currentRole = localStorage.getItem("role");
       const endpoint = currentRole === "provider" 
-        ? "http://localhost:8000/provider/payments"
-        : "http://localhost:8000/customer/payments";
+        ? `${API_URL}/provider/payments`
+        : `${API_URL}/customer/payments`;
       
       const res = await fetch(endpoint, {
         headers: getAuthHeaders(),

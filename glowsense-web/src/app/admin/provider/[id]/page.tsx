@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -69,14 +70,14 @@ export default function AdminProviderDetailPage() {
 
     try {
       // 1. Fetch Portfolio & Services
-      const detailsRes = await fetch(`http://localhost:8000/providers/${id}`);
+      const detailsRes = await fetch(`${API_URL}/providers/${id}`);
       if (detailsRes.ok) {
         const data = await detailsRes.json();
         setDetails(data);
       }
 
       // 2. Fetch History specifically for this provider
-      const bookingsRes = await fetch(`http://localhost:8000/admin/bookings?provider_id=${id}`, {
+      const bookingsRes = await fetch(`${API_URL}/admin/bookings?provider_id=${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (bookingsRes.ok) {
@@ -246,7 +247,7 @@ export default function AdminProviderDetailPage() {
                         {item.image_url ? (
                           <div className="aspect-video relative overflow-hidden bg-slate-200">
                              <img 
-                              src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
+                              src={item.image_url.startsWith('http') ? item.image_url : `${API_URL}${item.image_url}`}
                               alt={item.title}
                               className="w-full h-full object-cover"
                             />

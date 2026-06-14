@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -120,7 +121,7 @@ export default function DashboardPage() {
   const handleCreatePayoutLink = async () => {
     setPayoutSetupLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/provider/stripe/account-link", {
+      const res = await fetch(`${API_URL}/provider/stripe/account-link`, {
         method: "POST",
         headers: getAuthHeaders(),
       });
@@ -149,8 +150,8 @@ export default function DashboardPage() {
       }
 
       const endpoint = role === "provider"
-        ? "http://localhost:8000/provider/dashboard"
-        : "http://localhost:8000/customer/dashboard";
+        ? `${API_URL}/provider/dashboard`
+        : `${API_URL}/customer/dashboard`;
 
       const res = await fetch(endpoint, {
         headers: getAuthHeaders(),
@@ -172,7 +173,7 @@ export default function DashboardPage() {
   const handleSaveBio = async () => {
     setSavingBio(true);
     try {
-      const res = await fetch("http://localhost:8000/provider/bio", {
+      const res = await fetch(`${API_URL}/provider/bio`, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify({ bio: bioText }),
@@ -270,7 +271,7 @@ export default function DashboardPage() {
               <img
                 src={dashboardData.customer.profile_picture.startsWith('http')
                   ? dashboardData.customer.profile_picture
-                  : `http://localhost:8000${dashboardData.customer.profile_picture}`}
+                  : `${API_URL}${dashboardData.customer.profile_picture}`}
                 alt={dashboardData.customer.name}
                 className="w-full h-full object-cover"
                 onError={(e) => {
@@ -423,7 +424,7 @@ export default function DashboardPage() {
             <img
               src={(dashboardData.provider.profile_picture || dashboardData.provider.profile_photo)?.startsWith('http')
                 ? (dashboardData.provider.profile_picture || dashboardData.provider.profile_photo)
-                : `http://localhost:8000${dashboardData.provider.profile_picture || dashboardData.provider.profile_photo}`}
+                : `${API_URL}${dashboardData.provider.profile_picture || dashboardData.provider.profile_photo}`}
               alt={dashboardData.provider.name}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -690,7 +691,7 @@ export default function DashboardPage() {
                   <div key={item.id} className="aspect-square rounded-xl overflow-hidden border border-border">
                     {item.image_url ? (
                       <img
-                        src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
+                        src={item.image_url.startsWith('http') ? item.image_url : `${API_URL}${item.image_url}`}
                         alt={item.title}
                         className="w-full h-full object-cover"
                       />

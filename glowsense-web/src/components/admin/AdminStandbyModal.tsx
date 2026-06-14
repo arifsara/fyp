@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { 
@@ -53,7 +54,7 @@ export default function AdminStandbyModal({
     setLoading(true);
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:8000/admin/standby/suggested-providers/${bookingId}`, {
+      const res = await fetch(`${API_URL}/admin/standby/suggested-providers/${bookingId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {

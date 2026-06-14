@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -52,7 +53,7 @@ export default function ProviderRatingsPage() {
 
   const fetchRatings = async () => {
     try {
-      const res = await fetch("http://localhost:8000/ratings/provider/my-ratings", {
+      const res = await fetch(`${API_URL}/ratings/provider/my-ratings`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch ratings");

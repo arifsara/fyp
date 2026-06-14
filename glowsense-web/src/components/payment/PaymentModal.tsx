@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { loadStripe, StripeElementsOptions } from "@stripe/stripe-js";
@@ -35,7 +36,7 @@ function PaymentForm({ bookingId, amount, serviceName, onSuccess, onClose }: { b
     const createPaymentIntent = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:8000/payments/create-intent", {
+        const res = await fetch(`${API_URL}/payments/create-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -94,7 +95,7 @@ function PaymentForm({ bookingId, amount, serviceName, onSuccess, onClose }: { b
       if (paymentIntent?.status === "succeeded") {
         // Confirm payment on backend
         const token = localStorage.getItem("token");
-        const confirmRes = await fetch("http://localhost:8000/payments/confirm", {
+        const confirmRes = await fetch(`${API_URL}/payments/confirm`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

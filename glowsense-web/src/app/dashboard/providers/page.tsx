@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -95,14 +96,14 @@ export default function ProvidersPage() {
 
   const fetchProviders = async () => {
     try {
-      const res = await fetch("http://localhost:8000/providers");
+      const res = await fetch(`${API_URL}/providers`);
       if (!res.ok) throw new Error("Failed to fetch providers");
       const data = await res.json();
       setProviders(data);
 
       // Fetch ratings for all providers
       const ratingsPromises = data.map((provider: ServiceProvider) =>
-        fetch(`http://localhost:8000/ratings/provider/${provider.id}/average`)
+        fetch(`${API_URL}/ratings/provider/${provider.id}/average`)
           .then(res => res.json())
           .then(ratingData => ({
             id: provider.id,
@@ -127,7 +128,7 @@ export default function ProvidersPage() {
 
   const fetchProviderDetails = async (providerId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/providers/${providerId}`);
+      const res = await fetch(`${API_URL}/providers/${providerId}`);
       if (!res.ok) throw new Error("Failed to fetch provider details");
       const data = await res.json();
       setSelectedProvider(data);
@@ -135,7 +136,7 @@ export default function ProvidersPage() {
       // Fetch rating for this provider if not already loaded
       if (!providerRatings[providerId]) {
         try {
-          const ratingRes = await fetch(`http://localhost:8000/ratings/provider/${providerId}/average`);
+          const ratingRes = await fetch(`${API_URL}/ratings/provider/${providerId}/average`);
           if (ratingRes.ok) {
             const ratingData = await ratingRes.json();
             setProviderRatings(prev => ({
@@ -153,7 +154,7 @@ export default function ProvidersPage() {
 
       // Fetch all ratings for this provider (for display in profile)
       try {
-        const ratingsRes = await fetch(`http://localhost:8000/ratings/provider/${providerId}/all`);
+        const ratingsRes = await fetch(`${API_URL}/ratings/provider/${providerId}/all`);
         if (ratingsRes.ok) {
           const ratingsData = await ratingsRes.json();
           setProviderRatingsList(prev => ({
@@ -214,7 +215,7 @@ export default function ProvidersPage() {
                 <img
                   src={(selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo)?.startsWith('http')
                     ? (selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo)
-                    : `http://localhost:8000${selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo}`}
+                    : `${API_URL}${selectedProvider.provider.profile_picture || selectedProvider.provider.profile_photo}`}
                   alt={selectedProvider.provider.full_name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -287,7 +288,7 @@ export default function ProvidersPage() {
                   {item.image_url && (
                     <div className="aspect-video bg-muted overflow-hidden">
                       <img
-                        src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:8000${item.image_url}`}
+                        src={item.image_url.startsWith('http') ? item.image_url : `${API_URL}${item.image_url}`}
                         alt={item.title}
                         className="w-full h-full object-cover"
                       />
@@ -477,7 +478,7 @@ export default function ProvidersPage() {
                     <img
                       src={(provider.profile_picture || provider.profile_photo)?.startsWith('http')
                         ? (provider.profile_picture || provider.profile_photo)
-                        : `http://localhost:8000${provider.profile_picture || provider.profile_photo}`}
+                        : `${API_URL}${provider.profile_picture || provider.profile_photo}`}
                       alt={provider.full_name}
                       className="w-full h-full object-cover"
                       onError={(e) => {

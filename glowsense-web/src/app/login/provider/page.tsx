@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/api";
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
@@ -33,7 +34,7 @@ export default function ProviderLoginPage() {
 
       const doGoogleLogin = async () => {
         try {
-          const res = await fetch("http://localhost:8000/auth/google", {
+          const res = await fetch(`${API_URL}/auth/google`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -94,7 +95,7 @@ export default function ProviderLoginPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const res = await fetch("http://localhost:8000/login/provider", {
+      const res = await fetch(`${API_URL}/login/provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -117,7 +118,7 @@ export default function ProviderLoginPage() {
       if (err.name === "AbortError") {
         setError("Request timed out. Please check if the backend server is running.");
       } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-        setError("Cannot connect to server. Please ensure the backend is running on http://localhost:8000");
+        setError(`Cannot connect to server. Please ensure the backend is running on ${API_URL}`);
       } else {
         setError(err.message || "Login failed. Please try again.");
       }
