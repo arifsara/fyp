@@ -17,12 +17,10 @@ ENV HOME=/home/user \
 WORKDIR $HOME/app
 
 # CPU-only torch (free Space has no GPU; keeps image smaller)
-COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir torch==2.2.2 torchvision==0.17.2 --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir "numpy==1.26.4" --force-reinstall
-
 COPY --chown=user . .
 
 # Port 7860 — the one public door HF opens
