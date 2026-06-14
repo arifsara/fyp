@@ -872,51 +872,6 @@ function drawMakeup(
   }
 }
 
-// ════════════════════════════════════════════════════════════════
-//  YOLO ONNX HELPERS
-//
-//  Setup (one-time):
-//    1. pip install ultralytics
-//    2. python -c "from ultralytics import YOLO; YOLO('yoloface.pt').export(format='onnx')"
-//    3. Copy yolov8n-face.onnx → /public/models/yolov8n-face.onnx
-//    4. npm install onnxruntime-web
-// ════════════════════════════════════════════════════════════════
-const YOLO_SIZE = 640;
-const YOLO_CONF = 0.45;
-
-/** Resize video frame to 640×640 and return NCHW Float32Array. */
-function preprocessYOLO(video: HTMLVideoElement): Float32Array {
-  const oc = new OffscreenCanvas(YOLO_SIZE, YOLO_SIZE);
-  const ctx = oc.getContext("2d")!;
-  ctx.drawImage(video, 0, 0, YOLO_SIZE, YOLO_SIZE);
-  const px = ctx.getImageData(0, 0, YOLO_SIZE, YOLO_SIZE).data;
-  const n = YOLO_SIZE * YOLO_SIZE;
-  const t = new Float32Array(3 * n);
-  for (let i = 0; i < n; i++) {
-    t[0 * n + i] = px[i * 4 + 0] / 255; // R channel
-    t[1 * n + i] = px[i * 4 + 1] / 255; // G channel
-    t[2 * n + i] = px[i * 4 + 2] / 255; // B channel
-  }
-  return t;
-}
-
-/**
- * Parse YOLOv8-face ONNX output and return true if any face passes conf threshold.
- * Handles both transpose layouts that ultralytics may produce:
- *   [1, 5, 8400]   → transposed (conf at row 4)
- *   [1, 8400, 5+]  → non-transposed (conf at col 4)
- */
-function yoloHasFace(data: Float32Array, dims: number[]): boolean {
-  const [, a, b] = dims;
-  if (a < b) {
-    // Transposed: dims = [1, 5, 8400] — conf is the 5th row
-    for (let i = 0; i < b; i++) if (data[4 * b + i] >= YOLO_CONF) return true;
-  } else {
-    // Non-transposed: dims = [1, 8400, 5+] — conf is col 4 in each row
-    for (let i = 0; i < a; i++) if (data[i * b + 4] >= YOLO_CONF) return true;
-  }
-  return false;
-}
 
 // ════════════════════════════════════════════════════════════════
 //  THEME
@@ -1015,16 +970,12 @@ function OpSlider({ label, value, onChange }: {
   );
 }
 
-function DetectionBadge({ yoloStatus, faceDetected }: {
-  yoloStatus: string; faceDetected: boolean;
+function DetectionBadge({ faceDetected }: {
+  faceDetected: boolean;
 }) {
-  const s = (yoloStatus === "ready" && faceDetected)
+  const s = faceDetected
     ? { label: "✓ Face Detected", bg: "#d4edda", col: "#155724" }
-    : yoloStatus === "loading"
-      ? { label: "YOLO · Loading…", bg: "#fff3cd", col: "#856404" }
-      : yoloStatus === "error"
-        ? { label: "YOLO Fallback · MP", bg: "#fff3cd", col: "#856404" }
-        : { label: "YOLO · Scanning…", bg: "#f0e4ea", col: T.textSub };
+    : { label: "Scanning…", bg: "#f0e4ea", col: T.textSub };
   return (
     <div style={{
       display: "inline-flex", alignItems: "center", gap: 6,
@@ -1037,7 +988,6 @@ function DetectionBadge({ yoloStatus, faceDetected }: {
       <span style={{
         width: 7, height: 7, borderRadius: "50%",
         background: s.col, display: "inline-block",
-        animation: yoloStatus === "loading" ? "pulse 1s infinite" : "none",
       }} />
       {s.label}
     </div>
@@ -1052,19 +1002,14 @@ export default function ARTryOn() {
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const faceMeshRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
-  const yoloRef = useRef<{ ort: any; session: any } | null>(null);
-  const yoloTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cfgRef = useRef<Record<string, any>>({});
-  // Ref so MediaPipe's onResults closure always sees the latest YOLO result
-  // without stale-closure issues from useState.
+  // Ref so MediaPipe's onResults closure always sees the latest face detected state
   const faceDetRef = useRef(false);
 
   const [cameraReady, setCameraReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mpLoaded, setMpLoaded] = useState(false);
-  // "idle" | "loading" | "ready" | "error"
-  const [yoloStatus, setYoloStatus] = useState("idle");
   const [faceDetected, setFaceDetected] = useState(false);
 
   // ── Makeup controls ────────────────────────────────────────────
@@ -1117,36 +1062,6 @@ export default function ARTryOn() {
     }
   }, []);
 
-  // ── Load YOLO ONNX model ──────────────────────────────────────
-  const loadYOLO = useCallback(async () => {
-    setYoloStatus("loading");
-    try {
-      // Browser-side YOLO disabled — using MediaPipe face detection instead
-      throw new Error("Browser YOLO disabled; using MediaPipe fallback");
-    } catch (e) {
-      console.warn("[YOLO] Load failed — falling back to MediaPipe face detection:", e);
-      setYoloStatus("error");
-    }
-  }, []);
-  // ── YOLO polling loop (every 300 ms) ─────────────────────────
-  const startYOLOLoop = useCallback(() => {
-    yoloTimerRef.current = setInterval(async () => {
-      const video = videoRef.current;
-      const yolo = yoloRef.current;
-      if (!video || !yolo || video.readyState < 2) return;
-      try {
-        const { ort, session } = yolo;
-        const data = preprocessYOLO(video);
-        const tensor = new (ort as any).Tensor("float32", data, [1, 3, YOLO_SIZE, YOLO_SIZE]);
-        const out = await session.run({ images: tensor });
-        // ultralytics exports use "output0"; fall back to first key
-        const t = out["output0"] ?? Object.values(out)[0] as any;
-        const detected = yoloHasFace(t.data, t.dims);
-        faceDetRef.current = detected;
-        setFaceDetected(detected);
-      } catch (_) { /* ignore single-frame errors */ }
-    }, 300);
-  }, []);
 
   // ── Start camera + MediaPipe ──────────────────────────────────
   const startCamera = useCallback(async () => {
@@ -1180,17 +1095,10 @@ export default function ARTryOn() {
 
         const mpHasFace = (results.multiFaceLandmarks?.length ?? 0) > 0;
 
-        // Gate: YOLO controls makeup if loaded, else MediaPipe presence
-        let gate: boolean;
-        if (yoloRef.current) {
-          gate = faceDetRef.current; // YOLO result (updated every 300ms)
-        } else {
-          gate = mpHasFace;          // fallback to MediaPipe detection
-          faceDetRef.current = mpHasFace;
-          setFaceDetected(mpHasFace);
-        }
+        faceDetRef.current = mpHasFace;
+        setFaceDetected(mpHasFace);
 
-        if (gate && mpHasFace) {
+        if (mpHasFace) {
           drawMakeup(ctx, results.multiFaceLandmarks[0], w, h, cfgRef.current);
         } else {
           ctx.clearRect(0, 0, w, h);
@@ -1206,19 +1114,14 @@ export default function ARTryOn() {
       await cam.start();
       setCameraReady(true);
 
-      // Load YOLO in background — camera stays live while model fetches
-      loadYOLO().then(() => {
-        if (yoloRef.current) startYOLOLoop();
-      });
     } catch (e: any) {
       setError(e.message || "Camera error");
     } finally {
       setLoading(false);
     }
-  }, [mpLoaded, loadYOLO, startYOLOLoop]);
+  }, [mpLoaded]);
 
   const stopCamera = useCallback(() => {
-    if (yoloTimerRef.current) clearInterval(yoloTimerRef.current);
     cameraRef.current?.stop(); cameraRef.current = null;
     faceMeshRef.current?.close(); faceMeshRef.current = null;
     if (videoRef.current?.srcObject) {
@@ -1230,8 +1133,6 @@ export default function ARTryOn() {
     setCameraReady(false);
     setFaceDetected(false);
     faceDetRef.current = false;
-    setYoloStatus("idle");
-    yoloRef.current = null;
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
@@ -1266,11 +1167,11 @@ export default function ARTryOn() {
                 fontSize: 22, fontWeight: 700, letterSpacing: 2,
               }}>AR MAKEUP STUDIO</h1>
               <p style={{ margin: 0, color: T.textSub, fontSize: 11 }}>
-                Virtual Try-On · YOLOv8-face + MediaPipe 468pt
+                Virtual Try-On · MediaPipe 468pt
               </p>
             </div>
           </div>
-          {cameraReady && <DetectionBadge yoloStatus={yoloStatus} faceDetected={faceDetected} />}
+          {cameraReady && <DetectionBadge faceDetected={faceDetected} />}
         </div>
 
         {/* Video + overlay canvas */}
@@ -1291,7 +1192,7 @@ export default function ARTryOn() {
           }} />
 
           {/* "look at camera" hint */}
-          {cameraReady && !faceDetected && yoloStatus !== "loading" && (
+          {cameraReady && !faceDetected && (
             <div style={{
               position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
               background: "rgba(45,26,38,0.78)", color: "#fff",
@@ -1303,18 +1204,6 @@ export default function ARTryOn() {
             </div>
           )}
 
-          {/* YOLO loading overlay */}
-          {cameraReady && yoloStatus === "loading" && (
-            <div style={{
-              position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
-              background: "rgba(255,243,205,0.92)", color: "#856404",
-              padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-              backdropFilter: "blur(4px)", whiteSpace: "nowrap",
-              fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.8,
-            }}>
-              ⏳ Loading YOLOv8-face model…
-            </div>
-          )}
 
           {/* Pre-launch screen */}
           {!cameraReady && (
@@ -1331,7 +1220,7 @@ export default function ARTryOn() {
               }}>
                 Allow camera access to begin.<br />
                 <span style={{ color: T.textSub, fontSize: 12 }}>
-                  YOLOv8-face gates makeup · MediaPipe places it on 468 landmarks.
+                  MediaPipe FaceMesh tracks 468 facial landmarks.
                 </span>
               </p>
               {error && (
@@ -1390,15 +1279,11 @@ export default function ARTryOn() {
                 margin: 0, color: T.accent, fontSize: 12,
                 fontFamily: "'Rajdhani',sans-serif", fontWeight: 700, letterSpacing: 1,
               }}>GLOBAL OPACITY</p>
-              <DetectionBadge yoloStatus={yoloStatus} faceDetected={faceDetected} />
+              <DetectionBadge faceDetected={faceDetected} />
             </div>
             <OpSlider label="Master" value={globalOp} onChange={setGlobalOp} />
             <p style={{ margin: "4px 0 0", color: T.textSub, fontSize: 10 }}>
-              {yoloStatus === "error"
-                ? "⚠ YOLO unavailable — using MediaPipe detection as fallback."
-                : yoloStatus === "loading"
-                  ? "⏳ Fetching YOLOv8-face ONNX — makeup uses MediaPipe until ready."
-                  : "Makeup renders only when YOLOv8-face confirms a face in frame."}
+              Makeup renders when a face is detected in frame.
             </p>
           </div>
         )}
@@ -1476,43 +1361,14 @@ export default function ARTryOn() {
           }}>MODEL PIPELINE</p>
 
           <p style={{ margin: "0 0 3px", color: T.textMid, fontSize: 11 }}>
-            <strong>Detection:</strong> YOLOv8n-face (ONNX Runtime Web)
-          </p>
-          <p style={{ margin: "0 0 3px", color: T.textMid, fontSize: 11 }}>
             <strong>Landmarks:</strong> MediaPipe FaceMesh (468pt + refined)
           </p>
-          <p style={{ margin: "0 0 3px", color: T.textMid, fontSize: 11 }}>
-            Conf ≥ {YOLO_CONF} · YOLO poll: 300 ms
-          </p>
           <p style={{ margin: "0 0 8px", color: T.textMid, fontSize: 11 }}>
-            YOLO:{" "}
-            <strong style={{
-              color: yoloStatus === "ready" ? T.green
-                : yoloStatus === "error" ? "#856404"
-                  : T.red,
-            }}>{yoloStatus}</strong>
-            {" · "}Face:{" "}
+            Face:{" "}
             <strong style={{ color: faceDetected ? T.green : T.red }}>
               {faceDetected ? "detected" : "none"}
             </strong>
           </p>
-
-          <div style={{
-            borderTop: `1px solid ${T.border}`, paddingTop: 8,
-            color: T.textSub, fontSize: 10, lineHeight: 1.6,
-          }}>
-            <strong>One-time model export:</strong><br />
-            <code style={{ fontSize: 9, background: "#f5ecf0", padding: "1px 4px", borderRadius: 3 }}>
-              YOLO('yoloface.pt').export(format='onnx')
-            </code><br />
-            Place output at:<br />
-            <code style={{ fontSize: 9, background: "#f5ecf0", padding: "1px 4px", borderRadius: 3 }}>
-              /public/models/yolov8n-face.onnx
-            </code><br />
-            Then: <code style={{ fontSize: 9, background: "#f5ecf0", padding: "1px 4px", borderRadius: 3 }}>
-              npm install onnxruntime-web
-            </code>
-          </div>
         </div>
 
         <p style={{ color: T.textSub, fontSize: 10, textAlign: "center", padding: "4px 0 20px" }}>
