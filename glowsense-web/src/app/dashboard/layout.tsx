@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/lib/api";
 import { 
   LayoutDashboard, 
   ScanFace, 
@@ -60,9 +61,46 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [role, setRole] = useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [initials, setInitials] = useState<string>("U");
 
   useEffect(() => {
-    setRole(localStorage.getItem("role"));
+    const currentRole = localStorage.getItem("role");
+    setRole(currentRole);
+
+    const fetchHeaderProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (!token || !currentRole) return;
+      try {
+        const endpoint = currentRole === "provider" 
+          ? `${API_URL}/provider/profile` 
+          : `${API_URL}/customer/profile`;
+        const res = await fetch(endpoint, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const photo = data.profile_photo || data.profile_picture;
+          if (photo) {
+             setProfilePhoto(photo.startsWith('http') ? photo : `${API_URL}${photo}`);
+          }
+          if (data.full_name) {
+             const parts = data.full_name.trim().split(' ');
+             if (parts.length > 1) {
+                setInitials((parts[0][0] + parts[parts.length - 1][0]).toUpperCase());
+             } else if (parts[0]) {
+                setInitials(parts[0].substring(0, 2).toUpperCase());
+             }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch header profile:", err);
+      }
+    };
+
+    fetchHeaderProfile();
   }, []);
 
   const handleLogout = () => {
@@ -168,9 +206,23 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-4">
             <NotificationBell role={role} />
-            <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 overflow-hidden">
-              {/* User Avatar Placeholder */}
-              <div className="w-full h-full flex items-center justify-center text-xs font-bold text-primary">JD</div>
+            <div className="h-10 w-10 rounded-full bg-pink-100 border-2 border-pink-200 overflow-hidden shadow-sm flex items-center justify-center flex-shrink-0">
+              {profilePhoto ? (
+                <img 
+                  src={profilePhoto} 
+                  alt="Profile" 
+                  className="h-full w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextElementSibling) {
+                      e.currentTarget.nextElementSibling.classList.remove('hidden');
+                    }
+                  }}
+                />
+              ) : null}
+              <div className={`${profilePhoto ? 'hidden' : ''} w-full h-full flex items-center justify-center text-sm font-bold text-pink-500`}>
+                {initials}
+              </div>
             </div>
           </div>
         </header>
