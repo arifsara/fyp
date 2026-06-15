@@ -283,7 +283,7 @@ export default function ProviderSignupPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <div className="p-3 text-sm text-red-500 bg-red-50 rounded-lg">{error}</div>}
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input id="name" value={formData.name} required onChange={handleChange} />
@@ -306,12 +306,12 @@ export default function ProviderSignupPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
                 <Input id="phone" type="tel" value={formData.phone} required onChange={handleChange} />
               </div>
-              <div className="col-span-2">
+              <div className="md:col-span-2">
                 <SignupLocation
                   onLocationChange={handleLocationChange}
                   value={formData.city}
@@ -395,7 +395,7 @@ export default function ProviderSignupPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" value={formData.password} required onChange={handleChange} />

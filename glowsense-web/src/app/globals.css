@@ -1,39 +1,38 @@
 /* ─── Premium Font ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap');
 
 @import "tailwindcss";
 
 /* ─── Design Tokens ────────────────────────────────────────── */
 :root {
-  /* Primary Pink Palette */
-  --primary: #F43F8A;
-  --primary-light: #FF85A9;
-  --primary-dark: #D1226E;
-  --primary-glow: rgba(244, 63, 138, 0.35);
-
+  /* Luxury Pink Palette */
+  --primary: #E88FA8;
+  --primary-light: #F8D7E2;
+  --primary-dark: #D66D8A;
+  
   /* Background & Surface */
-  --background: #FFF5F7;
-  --foreground: #1C1120;          /* rich dark plum-black, not pure #000 */
+  --background: #FFF7FA;
+  --foreground: #2F2430;
 
-  --card: #FFFFFF;
-  --card-foreground: #1C1120;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-foreground: #2F2430;
 
-  --muted: #F3F4F6;
-  --muted-foreground: #5C5470;    /* slightly warmer than default gray */
+  --muted: #FCEEF3;
+  --muted-foreground: #8B7680;
 
-  --accent: #FFE4ED;
-  --accent-foreground: #ea548d;
+  --secondary: #FCEEF3;
+  --secondary-foreground: #5B4650;
 
-  --border: #E5E7EB;
-  --input: #F9FAFB;
-  --ring: #F43F8A;
+  --border: rgba(232, 143, 168, 0.15);
+  --input: rgba(255, 255, 255, 0.6);
+  --ring: #D66D8A;
 
   /* Status */
-  --success: #10B981;
+  --success: #8AC8A3;
   --warning: #F59E0B;
-  --error:   #EF4444;
+  --error: #EF4444;
 
-  --radius: 0.75rem;
+  --radius: 1.5rem; /* 24px */
 }
 
 /* ─── Tailwind Theme Extension ─────────────────────────────── */
@@ -47,8 +46,8 @@
   --color-card-foreground:  var(--card-foreground);
   --color-muted:            var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent:           var(--accent);
-  --color-accent-foreground:var(--accent-foreground);
+  --color-secondary:        var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
   --color-border:           var(--border);
   --color-input:            var(--input);
   --color-ring:             var(--ring);
@@ -59,141 +58,141 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Plus Jakarta Sans', var(--font-geist-sans), Arial, sans-serif;
+  font-family: 'Outfit', 'Poppins', 'Inter', 'Manrope', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-weight: 700;
 }
 
 /* ─── Custom Scrollbar ──────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--background); }
-::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-dark); }
 
 /* ════════════════════════════════════════════════════════════ */
-/*  HERO SECTION UTILITIES                                      */
+/*  LUXURY SYSTEM UTILITIES & RESPONSIVENESS                    */
 /* ════════════════════════════════════════════════════════════ */
 
-/* 1. Gradient "Smart." text ──────────────────────────────── */
-.hero-gradient-text {
-  background: linear-gradient(135deg, #F43F8A 0%, #A855F7 60%, #EC4899 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.40));
+/* Typography Scaling (Mobile First) */
+.text-hero {
+  /* 30px @ 320px -> 72px @ 1280px */
+  font-size: clamp(1.875rem, 0.475rem + 7vw, 4.5rem);
+  line-height: 1.1;
 }
 
-/* 2. Ambient background blobs ────────────────────────────── */
-.hero-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.55;
-  pointer-events: none;
-  will-change: transform;
-}
-.hero-blob-pink {
-  width: 520px; height: 520px;
-  background: radial-gradient(circle, #FF85A9 0%, #F43F8A 55%, transparent 100%);
-  top: -120px; right: -80px;
-  animation: blobDrift 14s ease-in-out infinite alternate;
-}
-.hero-blob-purple {
-  width: 460px; height: 460px;
-  background: radial-gradient(circle, #C084FC 0%, #7C3AED 60%, transparent 100%);
-  bottom: 60px; left: -100px;
-  animation: blobDrift 18s ease-in-out infinite alternate-reverse;
-  opacity: 0.35;
-}
-.hero-blob-peach {
-  width: 360px; height: 360px;
-  background: radial-gradient(circle, #FED7AA 0%, #FB923C 55%, transparent 100%);
-  top: 40%; left: 38%;
-  animation: blobDrift 22s ease-in-out infinite alternate;
-  opacity: 0.28;
+.text-section {
+  /* 24px @ 320px -> 40px @ 1280px */
+  font-size: clamp(1.5rem, 0.967rem + 2.67vw, 2.5rem);
+  line-height: 1.2;
 }
 
-@keyframes blobDrift {
-  0%   { transform: translate(0px, 0px)    scale(1);    }
-  33%  { transform: translate(22px, -18px)  scale(1.06); }
-  66%  { transform: translate(-14px, 24px)  scale(0.97); }
-  100% { transform: translate(10px, -10px)  scale(1.03); }
+.text-card {
+  /* 18px @ 320px -> 24px @ 1280px */
+  font-size: clamp(1.125rem, 0.925rem + 1vw, 1.5rem);
+  line-height: 1.3;
 }
 
-/* 3. Primary CTA gradient button ─────────────────────────── */
+.text-body-fluid {
+  /* 14px @ 320px -> 18px @ 1280px */
+  font-size: clamp(0.875rem, 0.742rem + 0.67vw, 1.125rem);
+  line-height: 1.6;
+}
+
+/* Spacing Variables */
+.section-padding {
+  /* 32px @ 320px -> 120px @ 1280px */
+  padding-top: clamp(2rem, -0.933rem + 14.67vw, 7.5rem);
+  padding-bottom: clamp(2rem, -0.933rem + 14.67vw, 7.5rem);
+}
+
+/* Touch Targets & Inputs */
+input, select, textarea {
+  min-height: 48px;
+  width: 100%;
+}
+@media (min-width: 768px) {
+  input, select, textarea {
+    width: auto;
+  }
+}
+
+/* 1. Buttons */
 .btn-primary-gradient {
-  background: linear-gradient(135deg, #F43F8A 0%, #EC4899 45%, #A855F7 100%);
-  box-shadow: 0 8px 24px rgba(244, 63, 138, 0.45), 0 2px 6px rgba(168, 85, 247, 0.20);
-  border: none;
+  background: linear-gradient(135deg, #E88FA8, #D66D8A);
+  border-radius: 999px;
+  padding: 0 32px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
   color: #fff !important;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  border: none;
+  transition: transform 0.3s ease, filter 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 15px 40px rgba(214, 109, 138, 0.15);
 }
 .btn-primary-gradient:hover {
-  transform: translateY(-2px) scale(1.025);
-  box-shadow: 0 14px 36px rgba(244, 63, 138, 0.55), 0 4px 12px rgba(168, 85, 247, 0.30);
-  filter: brightness(1.08);
-}
-.btn-primary-gradient:active {
-  transform: translateY(0) scale(0.99);
+  transform: scale(1.03);
+  filter: brightness(1.05);
+  box-shadow: 0 20px 50px rgba(214, 109, 138, 0.20);
 }
 
-/* 4. Secondary outline button ────────────────────────────── */
 .btn-secondary-outline {
-  background: rgba(255, 255, 255, 0.60);
-  border: 1.5px solid #F43F8A;
-  color: #F43F8A !important;
-  backdrop-filter: blur(6px);
-  transition: background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(232, 143, 168, 0.25);
+  border-radius: 999px;
+  padding: 0 32px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #D66D8A !important;
+  backdrop-filter: blur(8px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
 }
 .btn-secondary-outline:hover {
-  background: linear-gradient(135deg, rgba(244,63,138,0.08) 0%, rgba(168,85,247,0.08) 100%);
-  box-shadow: 0 4px 20px rgba(244,63,138,0.20);
-  transform: translateY(-2px) scale(1.015);
+  background: rgba(255, 255, 255, 0.95);
+  transform: scale(1.02);
+  box-shadow: 0 15px 40px rgba(214, 109, 138, 0.10);
 }
 
-/* 5. Hero dashboard preview card ─────────────────────────── */
-.hero-preview-card {
-  box-shadow:
-    0 2px 4px rgba(0,0,0,0.03),
-    0 20px 40px rgba(0,0,0,0.06),
-    inset 0 1px 0 rgba(255,255,255,0.90);
-  border: 1px solid rgba(229, 231, 235, 0.8);
-  border-radius: 24px 24px 0 0;
-  background: #fff;
+/* 2. Glassmorphism System */
+.glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 24px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  /* 20px @ 320px -> 32px @ 1280px */
+  padding: clamp(1.25rem, 0.85rem + 2vw, 2rem);
 }
 
-/* 6. Glassmorphic navbar ──────────────────────────────────── */
-.navbar-glass {
-  background: rgba(255, 245, 247, 0.72) !important;
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid rgba(244, 63, 138, 0.10) !important;
-  box-shadow: 0 1px 12px rgba(244, 63, 138, 0.06);
-}
-
-/* 7. Feature card polish ──────────────────────────────────── */
 .feature-card {
-  background: rgba(255, 255, 255, 0.80);
-  border: 1px solid rgba(244, 63, 138, 0.08);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.04);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-  backdrop-filter: blur(8px);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
 }
 .feature-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 32px rgba(244, 63, 138, 0.12);
-  border-color: rgba(244, 63, 138, 0.25);
+  transform: translateY(-8px);
+  box-shadow: 0 20px 50px rgba(214, 109, 138, 0.20);
 }
 
-/* 8. Entrance animations ─────────────────────────────────── */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(28px); }
-  to   { opacity: 1; transform: translateY(0);    }
+/* 3. Navigation */
+.navbar-glass {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
 }
-.animate-fade-in-up {
-  animation: fadeInUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+/* 4. Utilities */
+.hero-overlay {
+  background: linear-gradient(rgba(15,15,15,0.35), rgba(15,15,15,0.55));
 }
-.animation-delay-100 { animation-delay: 0.10s; }
-.animation-delay-200 { animation-delay: 0.20s; }
-.animation-delay-300 { animation-delay: 0.35s; }
-.animation-delay-400 { animation-delay: 0.50s; }
-.animation-delay-500 { animation-delay: 0.65s; }

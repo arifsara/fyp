@@ -1141,10 +1141,8 @@ export default function ARTryOn() {
   //  RENDER
   // ════════════════════════════════════════════════════════════
   return (
-    <div style={{
-      display: "flex", gap: 16, width: "100%", minHeight: "100vh",
+    <div className="flex flex-col lg:flex-row gap-4 w-full min-h-screen p-4 box-border" style={{
       background: T.bg, fontFamily: "'DM Sans',sans-serif",
-      padding: 16, boxSizing: "border-box",
     }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
 
@@ -1290,9 +1288,7 @@ export default function ARTryOn() {
       </div>
 
       {/* ═══ RIGHT: Controls panel ═══ */}
-      <div style={{
-        width: 300, flexShrink: 0, overflowY: "auto",
-        maxHeight: "100vh", paddingRight: 2,
+      <div className="w-full lg:w-[300px] flex-shrink-0 lg:overflow-y-auto lg:max-h-[calc(100vh-32px)] lg:pr-1" style={{
         scrollbarWidth: "thin", scrollbarColor: `${T.accent2} ${T.bg}`,
       }}>
 
